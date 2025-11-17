@@ -8,10 +8,9 @@
 #include "gtest/gtest.h"
 #include "janus/janus.hpp"
 
-#define DEFAULT_REDIS_HOST "127.0.0.1"
-#define DEFAULT_REDIS_PORT 6379
+#include "test_env.hpp"
 
-class list_operations_test: public ::testing::Test {
+class list_operations_test: public testing::Test {
 protected:
 	// Type aliases (K and V are both std::string)
 	using key_type = std::string;
@@ -23,44 +22,18 @@ protected:
 	std::string redis_host;
 	unsigned short redis_port{DEFAULT_REDIS_PORT};
 
-	std::shared_ptr<kv_connection> conn;
-	std::shared_ptr<serializer<key_type>> k_serializer;
-	std::shared_ptr<serializer<value_type>> v_serializer;
-	std::unique_ptr<redis_template<key_type, value_type>> tpl;
+	std::shared_ptr<janus::kv_connection> conn;
+	std::shared_ptr<janus::serializer<key_type>> k_serializer;
+	std::shared_ptr<janus::serializer<value_type>> v_serializer;
+	std::unique_ptr<janus::redis_template<key_type, value_type>> tpl;
 
 	void SetUp() override {
 		// 1. Retrieve connection parameters from environment variables
-		if (const char *env_host = std::getenv("TEST_REDIS_HOST")) {
-			redis_host = env_host;
-		}
-		else {
-			redis_host = DEFAULT_REDIS_HOST;
-			std::cerr << "Warning: TEST_REDIS_HOST not set. Using default: " << redis_host << std::endl;
-		}
-
-		if (const char *env_port = std::getenv("TEST_REDIS_PORT")) {
-			try {
-				int port_int = std::stoi(env_port);
-				if (port_int > 0 && port_int < 65536) {
-					redis_port = static_cast<unsigned short>(port_int);
-				}
-				else {
-					throw std::runtime_error("Port out of range.");
-				}
-			}
-			catch ([[maybe_unused]] const std::exception &e) {
-				redis_port = DEFAULT_REDIS_PORT;
-				std::cerr << "Warning: Invalid TEST_REDIS_PORT value. Using default: " << redis_port << std::endl;
-			}
-		}
-		else {
-			redis_port = DEFAULT_REDIS_PORT;
-			std::cerr << "Warning: TEST_REDIS_PORT not set. Using default: " << redis_port << std::endl;
-		}
+		auto [redis_host, redis_port] = get_redis_connection_params();
 
 		// 2. Create underlying connection
 		try {
-			conn = std::make_shared<redis_connection>(redis_host, redis_port);
+			conn = std::make_shared<janus::redis_connection>(redis_host, redis_port);
 		}
 		catch (const std::runtime_error &e) {
 			// If connection fails, skip all tests in this fixture
@@ -69,11 +42,11 @@ protected:
 		}
 
 		// 3. Create Serializers
-		k_serializer = std::make_shared<string_serializer<key_type>>();
-		v_serializer = std::make_shared<string_serializer<value_type>>();
+		k_serializer = std::make_shared<janus::string_serializer<key_type>>();
+		v_serializer = std::make_shared<janus::string_serializer<value_type>>();
 
 		// 4. Construct redis_template
-		tpl = std::make_unique<redis_template<key_type, value_type>>(conn, k_serializer, v_serializer);
+		tpl = std::make_unique<janus::redis_template<key_type, value_type>>(conn, k_serializer, v_serializer);
 
 		// 5. Clean up test key
 		clear_test_keys();

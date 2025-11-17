@@ -90,19 +90,19 @@ ctest --test-dir build --output-on-failure
 ```
 
 📌 Using Custom Redis Host/Port:
-To use a remote Redis instance, set the `TEST_REDIS_HOST` and `TEST_REDIS_PORT` environment variables before running
+To use a remote Redis instance, set the `REDIS_HOST` and `REDIS_PORT` environment variables before running
 `ctest`.
 
 Linux / macOS (Bash/Zsh):
 
 ```shell
-TEST_REDIS_HOST="172.17.57.112" TEST_REDIS_PORT=6379 ctest --test-dir build --verbose
+REDIS_HOST="172.17.57.112" REDIS_PORT=6379 ctest --test-dir build --verbose
 ```
 
 Windows (PowerShell):
 
 ```shell
-$env:TEST_REDIS_HOST="172.17.57.112"; $env:TEST_REDIS_PORT="6379"; ctest --test-dir build --verbose
+$env:REDIS_HOST="172.17.57.112"; $env:REDIS_PORT="6379"; ctest --test-dir build --verbose
 ```
 
 Note: If the tests fail to connect to the specified Redis instance, they will be automatically skipped (`GTEST_SKIP`),

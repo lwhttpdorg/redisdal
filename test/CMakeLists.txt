@@ -12,7 +12,7 @@ set(JANUS_TEST_LIBS
 # Define a macro to reduce repetition for each test file
 macro(add_janus_test TEST_NAME FILENAME)
 	# 1. Define the executable target
-	add_executable(${TEST_NAME} ${FILENAME})
+	add_executable(${TEST_NAME} ${FILENAME} test_env.cpp)
 
 	# 2. Link common dependencies
 	target_link_libraries(
