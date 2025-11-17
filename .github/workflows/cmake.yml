@@ -38,7 +38,7 @@ jobs:
         run: >
           cmake -B build
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-          -DENABLE_TEST=ON
+          -DENABLE_JANUS_TEST=ON
           -S .
 
       - name: Build
