@@ -25,7 +25,6 @@ else ()
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
 endif ()
 
-#set(CMAKE_PREFIX_PATH "D:/OpenCode/hiredis")
 find_package(hiredis QUIET)
 
 if (TARGET hiredis::hiredis)

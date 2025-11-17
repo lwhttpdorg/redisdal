@@ -31,8 +31,16 @@ cd janus
 
 Create a separate build directory and execute CMake from within it.
 
+Windows(mingw64):
+
 ```shell
 cmake -S . -B build -G "MinGW Makefiles" -DENABLE_TEST=ON -DCMAKE_PREFIX_PATH="D:/OpenCode/hiredis"
+```
+
+Linux:
+
+```shell
+cmake -S . -B build -G "Unix Makefiles" -DENABLE_TEST=ON
 ```
 
 ⚠️ Note on Dependencies (`hiredis`):
@@ -55,7 +63,7 @@ cmake -DCMAKE_PREFIX_PATH="<Path/To/hiredis/install>;<Path/To/Other/Deps>"
 Compile the project using your chosen build tool:
 
 ```shell
-cmake --build build --config=Debug
+cmake --build build --config=Debug -j $(nproc)
 ```
 
 ## ✅ Running Tests
@@ -67,7 +75,7 @@ Tests are optional and require a running Redis instance. They are enabled by the
 To include the tests in your build, enable the option during CMake configuration:
 
 ```shell
-cmake -S . -B build -G "MinGW Makefiles" -DENABLE_TEST=ON -DCMAKE_PREFIX_PATH="D:/OpenCode/hiredis"
+cmake -S . -B build -DENABLE_TEST=ON
 ```
 
 ### 2. Executing Tests with CTest
@@ -78,7 +86,7 @@ for flexible testing against various Redis instances. The default connection is 
 📌 Using Default Redis (127.0.0.1:6379):
 
 ```shell
-ctest --test-dir build --verbose
+ctest --test-dir build --output-on-failure
 ```
 
 📌 Using Custom Redis Host/Port:
