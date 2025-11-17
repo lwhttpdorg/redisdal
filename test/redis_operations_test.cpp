@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <unordered_set>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -14,7 +15,7 @@
 #define DEFAULT_REDIS_PORT 6379
 
 // The Test Fixture class, implementing SetUp/TearDown logic
-class redis_operations_functional_test: public ::testing::Test {
+class redis_operations_test: public ::testing::Test {
 protected:
 	// Type aliases
 	using key_type = std::string;
@@ -119,8 +120,7 @@ protected:
 // -----------------------------------------------------------------------------
 
 // Test: set creates key, exists returns true, del removes key, exists returns false.
-// Test: deleting a single key, including a non-existent key.
-TEST_F(redis_operations_functional_test, exists_set_del_single) {
+TEST_F(redis_operations_test, exists_set_del_single) {
 	key_type test_key = test_key_single;
 
 	// 1. Initial state: Key should not exist
@@ -139,13 +139,13 @@ TEST_F(redis_operations_functional_test, exists_set_del_single) {
 	// 5. After DEL: Key should not exist
 	ASSERT_FALSE(tpl->exists(test_key)) << "Key should not exist after DEL.";
 
-	// 6. DEL non-existent key (as required by comment)
+	// 6. DEL non-existent key
 	long long deleted_count_non_existing = tpl->del(test_key);
 	EXPECT_EQ(deleted_count_non_existing, 0) << "DEL on non-existent key should return 0.";
 }
 
 // Test: deleting multiple keys, including non-existent ones, and verifying deletion.
-TEST_F(redis_operations_functional_test, del_multiple) {
+TEST_F(redis_operations_test, del_multiple) {
 	key_type key_a = test_key_del_a;
 	key_type key_b = test_key_del_b;
 	key_type key_c_non_existent = non_existent_key; // A key guaranteed not to exist
@@ -175,7 +175,7 @@ TEST_F(redis_operations_functional_test, del_multiple) {
 
 // Test: Set TTL, then verify that the value read by ttl() is <= the set value.
 // Test: ttl() return values for non-existent key (-2), persistent key (-1), and expiring key (> 0).
-TEST_F(redis_operations_functional_test, ttl_and_expire) {
+TEST_F(redis_operations_test, ttl_and_expire) {
 	key_type test_key = test_key_ttl;
 	constexpr long long ttl_seconds = 5;
 
@@ -191,7 +191,7 @@ TEST_F(redis_operations_functional_test, ttl_and_expire) {
 	// 4. Set EXPIRE
 	ASSERT_TRUE(tpl->expire(test_key, ttl_seconds)) << "EXPIRE operation failed.";
 
-	// 5. Read TTL: must be > 0 and <= set value (accounting for command execution time)
+	// 5. Read TTL: must be > 0 and <= set value
 	int64_t remaining_ttl = tpl->ttl(test_key);
 
 	EXPECT_GT(remaining_ttl, 0) << "TTL must be positive after EXPIRE.";
@@ -212,7 +212,7 @@ TEST_F(redis_operations_functional_test, ttl_and_expire) {
 
 // Test: Set PTTL, then verify that the value read by pttl() is <= the set value.
 // Test: pttl() return values for non-existent key (-2), persistent key (-1), and expiring key (> 0).
-TEST_F(redis_operations_functional_test, pttl_and_pexpire) {
+TEST_F(redis_operations_test, pttl_and_pexpire) {
 	key_type test_key = test_key_pttl;
 	constexpr int pttl_milliseconds = 5000; // 5 seconds
 	constexpr int sleep_milliseconds = 1000; // 1 second
@@ -244,6 +244,103 @@ TEST_F(redis_operations_functional_test, pttl_and_pexpire) {
 	// latency).
 	EXPECT_GE(remaining_pttl_after_delay, remaining_pttl - sleep_milliseconds)
 		<< "PTTL must decrease by at least the sleep time.";
+}
+
+// -----------------------------------------------------------------------------
+// Test Case 4: keys(pattern) - Testing redis_template implementation
+// -----------------------------------------------------------------------------
+
+// Test: Verify redis_template's keys(pattern) correctly finds and deserializes keys.
+TEST_F(redis_operations_test, template_keys_pattern_matching) {
+	const key_type base_key = "tpl_keys_test:";
+	const std::string pattern_prefix = base_key + "*";
+
+	// 1. Setup: Create keys with a specific pattern
+	const key_type key_1 = base_key + "apple";
+	const key_type key_2 = base_key + "banana";
+	const key_type key_3 = "other_key:orange"; // Should NOT match
+
+	set_test_key(key_1);
+	set_test_key(key_2);
+	set_test_key(key_3); // Set key that doesn't match the pattern
+
+	// 2. Execute keys using the template instance
+	std::unordered_set<key_type> found_keys;
+	tpl->keys(pattern_prefix, found_keys);
+
+	// 3. Verify results
+	EXPECT_EQ(found_keys.size(), 2) << "Template KEYS should find exactly 2 matching keys.";
+	EXPECT_TRUE(found_keys.count(key_1)) << "Template KEYS should include key_1.";
+	EXPECT_TRUE(found_keys.count(key_2)) << "Template KEYS should include key_2.";
+	EXPECT_FALSE(found_keys.count(key_3)) << "Template KEYS should NOT include key_3.";
+
+	// 4. Cleanup
+	tpl->del({key_1, key_2, key_3});
+}
+
+// -----------------------------------------------------------------------------
+// Test Case 5: scan(cursor, pattern, count) - Testing redis_template implementation
+// -----------------------------------------------------------------------------
+
+// Test: Verify redis_template's scan() iterates through all matching keys, handling cursor and deserialization.
+TEST_F(redis_operations_test, template_scan_iteration) {
+	const key_type base_key = "tpl_scan_test:";
+	const std::string pattern = base_key + "*";
+	constexpr int total_keys = 25; // Keys to create
+	constexpr int scan_count = 10; // Batch size per scan call
+
+	std::unordered_set<key_type> expected_keys;
+
+	// 1. Setup: Create the expected number of keys
+	for (int i = 0; i < total_keys; ++i) {
+		key_type key = base_key + std::to_string(i);
+		set_test_key(key);
+		expected_keys.insert(key);
+	}
+
+	// Set a key that should NOT be returned by the pattern
+	set_test_key("non_matching_key");
+
+	// 2. Perform SCAN iteration
+	uint64_t cursor = 0;
+	std::unordered_set<key_type> scanned_keys;
+	int iteration_count = 0;
+
+	do {
+		auto result = tpl->scan(cursor, pattern, scan_count);
+		cursor = result.cursor;
+
+		// Accumulate scanned keys
+		for (const auto &key: result.keys) {
+			scanned_keys.insert(key);
+		}
+
+		iteration_count++;
+
+	} while (cursor != 0 && iteration_count < 100); // Limit iterations to prevent endless loop
+
+	// 3. Verify results
+
+	// A. Check total count
+	EXPECT_EQ(scanned_keys.size(), total_keys)
+		<< "Template SCAN should find exactly " << total_keys << " matching keys.";
+
+	// B. Check content integrity
+	EXPECT_EQ(scanned_keys, expected_keys) << "The set of scanned keys does not match the expected set.";
+
+	// C. Verify minimum iteration count
+	int min_expected_iterations = (total_keys + scan_count - 1) / scan_count;
+	EXPECT_GE(iteration_count, min_expected_iterations)
+		<< "Template SCAN should take at least " << min_expected_iterations << " iterations.";
+
+	// 4. Cleanup
+	std::vector<key_type> keys_to_delete;
+	keys_to_delete.reserve(expected_keys.size() + 1);
+	for (const auto &key: expected_keys) {
+		keys_to_delete.push_back(key);
+	}
+	keys_to_delete.emplace_back("non_matching_key");
+	tpl->del(keys_to_delete);
 }
 
 int main(int argc, char **argv) {

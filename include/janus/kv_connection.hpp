@@ -1,14 +1,24 @@
 #pragma once
 
+
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
+
+#include "common.hpp"
+
+using string_scan_result = scan_result<std::string>;
 
 class kv_connection {
 public:
 	virtual ~kv_connection() = default;
 
 	virtual bool exists(const std::string &key) = 0;
+
+	virtual void keys(const std::string &pattern, std::unordered_set<std::string> &keys) = 0;
+
+	virtual string_scan_result scan(uint64_t cursor, const std::string &pattern, int count) = 0;
 
 	virtual bool expire(const std::string &key, int seconds) = 0;
 

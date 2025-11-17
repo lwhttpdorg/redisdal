@@ -1,8 +1,11 @@
 #pragma once
 
-#include <hiredis/hiredis.h>
+#include <cstddef>
 #include <memory>
+#include <stdexcept>
 #include <string>
+
+#include <hiredis/hiredis.h>
 
 #include "kv_connection.hpp"
 
@@ -22,6 +25,45 @@ public:
 	bool exists(const std::string &key) override {
 		auto r = exec("EXISTS %s", key.c_str());
 		return r->type == REDIS_REPLY_INTEGER && r->integer == 1;
+	}
+
+	void keys(const std::string &pattern, std::unordered_set<std::string> &keys) override {
+		auto r = exec("KEYS %s", pattern.c_str());
+		if (r->type == REDIS_REPLY_ARRAY) {
+			for (size_t i = 0; i < r->elements; ++i) {
+				if (r->element[i]->type == REDIS_REPLY_STRING) {
+					keys.emplace(r->element[i]->str, r->element[i]->len);
+				}
+			}
+		}
+	}
+
+	string_scan_result scan(uint64_t cursor, const std::string &pattern, int count) override {
+		string_scan_result result{0, {}};
+		auto r = exec("SCAN %s MATCH %s COUNT %d", std::to_string(cursor), pattern.c_str(), count);
+		if (r->type == REDIS_REPLY_ARRAY && r->elements == 2) {
+			// First element is the new cursor
+			if (r->element[0]->type == REDIS_REPLY_STRING) {
+				try {
+					result.cursor = std::stoull(std::string(r->element[0]->str, r->element[0]->len));
+				}
+				catch (const std::exception &e) {
+					throw std::runtime_error("SCAN: failed to convert cursor to uint64_t: " + std::string(e.what()));
+				}
+			}
+			else {
+				throw std::runtime_error("SCAN: unexpected cursor reply type or missing cursor.");
+			}
+			// Second element is the array of keys
+			if (r->element[1]->type == REDIS_REPLY_ARRAY) {
+				for (size_t i = 0; i < r->element[1]->elements; ++i) {
+					if (r->element[1]->element[i]->type == REDIS_REPLY_STRING) {
+						result.keys.emplace(r->element[1]->element[i]->str, r->element[1]->element[i]->len);
+					}
+				}
+			}
+		}
+		return result;
 	}
 
 	bool expire(const std::string &key, int seconds) override {

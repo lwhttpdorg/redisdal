@@ -34,13 +34,13 @@ Create a separate build directory and execute CMake from within it.
 Windows(mingw64):
 
 ```shell
-cmake -S . -B build -G "MinGW Makefiles" -DENABLE_TEST=ON -DCMAKE_PREFIX_PATH="D:/OpenCode/hiredis"
+cmake -S . -B build -G "MinGW Makefiles" -DENABLE_JANUS_TEST=ON -DCMAKE_PREFIX_PATH="D:/OpenCode/hiredis"
 ```
 
 Linux:
 
 ```shell
-cmake -S . -B build -G "Unix Makefiles" -DENABLE_TEST=ON
+cmake -S . -B build -G "Unix Makefiles" -DENABLE_JANUS_TEST=ON
 ```
 
 ⚠️ Note on Dependencies (`hiredis`):
@@ -68,14 +68,14 @@ cmake --build build --config=Debug -j $(nproc)
 
 ## ✅ Running Tests
 
-Tests are optional and require a running Redis instance. They are enabled by the CMake option `ENABLE_TEST`.
+Tests are optional and require a running Redis instance. They are enabled by the CMake option `ENABLE_JANUS_TEST`.
 
 ### 1. Enabling Tests
 
 To include the tests in your build, enable the option during CMake configuration:
 
 ```shell
-cmake -S . -B build -DENABLE_TEST=ON
+cmake -S . -B build -DENABLE_JANUS_TEST=ON
 ```
 
 ### 2. Executing Tests with CTest

@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 
+#include "common.hpp"
 #include "redis_operations.hpp"
 
 class kv_connection;
@@ -15,25 +16,33 @@ class redis_operations {
 public:
 	virtual ~redis_operations() = default;
 
+	/* Check if a key exists */
 	virtual bool exists(const K &key) = 0;
-
+	/* Retrieve all keys matching the given pattern */
+	virtual void keys(const std::string &pattern, std::unordered_set<K> &keys) = 0;
+	/* Scan the keyspace starting from the given cursor */
+	virtual scan_result<K> scan(uint64_t cursor, const std::string &pattern, int count) = 0;
+	/* Set expiration for a key */
 	virtual bool expire(const K &key, long long seconds) = 0;
+	/* Set expiration for a key in milliseconds */
 	virtual bool pexpire(const std::string &key, int milliseconds) = 0;
-
+	/* Delete a single key */
 	virtual long long del(const K &key) = 0;
+	/* Delete multiple keys */
 	virtual long long del(const std::vector<K> &keys) = 0;
-
+	/* Get the time to live for a key in seconds */
 	virtual int64_t ttl(const std::string &key) = 0;
+	/* Get the time to live for a key in milliseconds */
 	virtual int64_t pttl(const std::string &key) = 0;
-
+	/* String operations view */
 	virtual value_operations<K, V> &ops_for_value() = 0;
-
+	/* Hash operations view */
 	virtual hash_operations<K, V> &ops_for_hash() = 0;
-
+	/* List operations view */
 	virtual list_operations<K, V> &ops_for_list() = 0;
-
+	/* Set operations view */
 	virtual set_operations<K, V> &ops_for_set() = 0;
-
+	/* Sorted Set operations view */
 	virtual zset_operations<K, V> &ops_for_zset() = 0;
 };
 
@@ -63,6 +72,24 @@ public:
 	bool exists(const K &key) override {
 		auto serialized_key = this->serialize_key(key);
 		return connection->exists(serialized_key);
+	}
+
+	void keys(const std::string &pattern, std::unordered_set<K> &keys) override {
+		std::unordered_set<std::string> s_keys;
+		connection->keys(pattern, s_keys);
+		for (const auto &s_key: s_keys) {
+			keys.insert(this->deserialize_key(s_key));
+		}
+	}
+
+	scan_result<K> scan(uint64_t cursor, const std::string &pattern, int count) override {
+		auto s_result = connection->scan(cursor, pattern, count);
+		scan_result<K> result;
+		result.cursor = s_result.cursor;
+		for (const auto &s_key: s_result.keys) {
+			result.keys.insert(this->deserialize_key(s_key));
+		}
+		return result;
 	}
 
 	bool expire(const K &key, long long seconds) override {

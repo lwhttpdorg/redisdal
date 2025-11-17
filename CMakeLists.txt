@@ -46,9 +46,9 @@ else ()
 	target_link_libraries(${TARGET_NAME} INTERFACE hiredis::hiredis)
 endif ()
 
-option(ENABLE_TEST "Enable test" OFF)
+option(ENABLE_JANUS_TEST "Enable janus test" OFF)
 
-if (ENABLE_TEST)
+if (ENABLE_JANUS_TEST)
 	enable_testing()
 	add_subdirectory(test)
 endif ()
