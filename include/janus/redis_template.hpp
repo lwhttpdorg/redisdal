@@ -21,7 +21,7 @@ public:
 	/* Retrieve all keys matching the given pattern */
 	virtual void keys(const std::string &pattern, std::unordered_set<K> &keys) = 0;
 	/* Scan the keyspace starting from the given cursor */
-	virtual scan_result<K> scan(uint64_t cursor, const std::string &pattern, int count) = 0;
+	virtual scan_result<K> scan(uint64_t cursor, const std::string &pattern, unsigned int count) = 0;
 	/* Set expiration for a key */
 	virtual bool expire(const K &key, long long seconds) = 0;
 	/* Set expiration for a key in milliseconds */
@@ -82,7 +82,7 @@ public:
 		}
 	}
 
-	scan_result<K> scan(uint64_t cursor, const std::string &pattern, int count) override {
+	scan_result<K> scan(uint64_t cursor, const std::string &pattern, unsigned int count) override {
 		auto s_result = connection->scan(cursor, pattern, count);
 		scan_result<K> result;
 		result.cursor = s_result.cursor;

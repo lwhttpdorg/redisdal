@@ -49,3 +49,6 @@ build
 
 # Exception: Do NOT ignore the primary CMake configuration file
 !CMakeLists.txt
+
+# VSCode
+.vscode

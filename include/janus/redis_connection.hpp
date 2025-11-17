@@ -38,9 +38,9 @@ public:
 		}
 	}
 
-	string_scan_result scan(uint64_t cursor, const std::string &pattern, int count) override {
+	string_scan_result scan(uint64_t cursor, const std::string &pattern, unsigned int count) override {
 		string_scan_result result{0, {}};
-		auto r = exec("SCAN %s MATCH %s COUNT %d", std::to_string(cursor), pattern.c_str(), count);
+		auto r = exec("SCAN %s MATCH %s COUNT %u", std::to_string(cursor), pattern.c_str(), count);
 		if (r->type == REDIS_REPLY_ARRAY && r->elements == 2) {
 			// First element is the new cursor
 			if (r->element[0]->type == REDIS_REPLY_STRING) {

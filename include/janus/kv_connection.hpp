@@ -1,6 +1,5 @@
 #pragma once
 
-
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -18,7 +17,7 @@ public:
 
 	virtual void keys(const std::string &pattern, std::unordered_set<std::string> &keys) = 0;
 
-	virtual string_scan_result scan(uint64_t cursor, const std::string &pattern, int count) = 0;
+	virtual string_scan_result scan(uint64_t cursor, const std::string &pattern, unsigned int count) = 0;
 
 	virtual bool expire(const std::string &key, int seconds) = 0;
 
