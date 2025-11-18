@@ -66,6 +66,22 @@ namespace janus {
 		 */
 		virtual std::vector<V> hvals(const K &key) = 0;
 
+		/**
+		 * @brief Incrementally iterates the fields and values of a hash.
+		 * @param key The hash key (K).
+		 * @param cursor The scan cursor.
+		 * @param pattern The pattern to match fields against.
+		 * @param count The number of elements to return. This is a hint to the server, not an upper limit.
+		 * @param hash_map An unordered_map to store the resulting fields and values.
+		 * @return The new cursor position after the scan. (The cursor > 0 indicates more fields to scan.)
+		 * @attention
+		 *
+		 * - the count is just a hint to the server, not an upper limit.
+		 * - the returned cursor > 0 indicates more keys to scan, not that is an index of offset.
+		 */
+		virtual uint64_t hscan(const K &key, uint64_t cursor, const K &pattern, unsigned int count,
+							   std::unordered_map<K, V> &hash_map) = 0;
+
 		/* Write/Set Operations */
 
 		/**

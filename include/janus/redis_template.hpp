@@ -93,6 +93,11 @@ namespace janus {
 			return result;
 		}
 
+		std::string type(const K &key) {
+			auto serialized_key = this->serialize_key(key);
+			return connection->type(serialized_key);
+		}
+
 		bool expire(const K &key, long long seconds) override {
 			auto serialized_key = this->serialize_key(key);
 			return connection->expire(serialized_key, seconds);

@@ -32,14 +32,7 @@ protected:
 		auto [redis_host, redis_port] = get_redis_connection_params();
 
 		// 2. Create underlying connection
-		try {
-			conn = std::make_shared<janus::redis_connection>(redis_host, redis_port);
-		}
-		catch (const std::runtime_error &e) {
-			// If connection fails, skip all tests in this fixture
-			GTEST_SKIP() << "Skipping test: Could not connect to Redis at " << redis_host << ":" << redis_port
-						 << ". Error: " << e.what();
-		}
+		conn = std::make_shared<janus::redis_connection>(redis_host, redis_port);
 
 		// 3. Create Serializers
 		k_serializer = std::make_shared<janus::string_serializer<key_type>>();

@@ -42,14 +42,7 @@ protected:
 		auto [redis_host, redis_port] = get_redis_connection_params();
 
 		// 2. Create underlying connection
-		try {
-			conn = std::make_shared<janus::redis_connection>(redis_host, redis_port);
-		}
-		catch (const std::runtime_error &e) {
-			// If connection fails, skip all tests in this fixture
-			GTEST_SKIP() << "Skipping test: Could not connect to Redis at " << redis_host << ":" << redis_port
-						 << ". Error: " << e.what();
-		}
+		conn = std::make_shared<janus::redis_connection>(redis_host, redis_port);
 
 		// 3. Create Serializers
 		k_serializer = std::make_shared<janus::string_serializer<key_type>>();
@@ -282,14 +275,12 @@ TEST_F(redis_operations_test, template_scan_iteration) {
 	do {
 		auto result = tpl->scan(cursor, pattern, scan_count);
 		cursor = result.cursor;
-
 		// Accumulate scanned keys
 		for (const auto &key: result.keys) {
 			scanned_keys.insert(key);
 		}
-
-		iteration_count++;
-
+		++iteration_count;
+		// cursor > 0 indicates more keys to scan
 	} while (cursor != 0 && iteration_count < 100); // Limit iterations to prevent endless loop
 
 	// 3. Verify results
@@ -302,9 +293,9 @@ TEST_F(redis_operations_test, template_scan_iteration) {
 	EXPECT_EQ(scanned_keys, expected_keys) << "The set of scanned keys does not match the expected set.";
 
 	// C. Verify minimum iteration count
-	int min_expected_iterations = (total_keys + scan_count - 1) / scan_count;
-	EXPECT_GE(iteration_count, min_expected_iterations)
-		<< "Template SCAN should take at least " << min_expected_iterations << " iterations.";
+	/* Since scan_count is a hint and not an upper limit, any number of iteration_count greater than zero is reasonable.
+	 */
+	EXPECT_GE(iteration_count, 0) << "Template SCAN should take at least 1 iteration to complete the scan.";
 
 	// 4. Cleanup
 	std::vector<key_type> keys_to_delete;
@@ -314,6 +305,26 @@ TEST_F(redis_operations_test, template_scan_iteration) {
 	}
 	keys_to_delete.emplace_back("non_matching_key");
 	tpl->del(keys_to_delete);
+}
+
+TEST_F(redis_operations_test, type) {
+	// Test purpose: Verify that redis_template::type returns the correct string description for different data types
+	key_type string_key = "test_type_string";
+	key_type hash_key = "test_type_hash";
+
+	// 1) Create a string type key
+	ASSERT_TRUE(tpl->ops_for_value().set(string_key, static_cast<value_type>(123)));
+
+	// 2) Create a hash type key (insert one field)
+	ASSERT_TRUE(tpl->ops_for_hash().hset(hash_key, std::string("field1"), static_cast<value_type>(1)));
+
+	// Verify the return value of type()
+	EXPECT_EQ(tpl->type(string_key), "string") << "Expected type string for key: " << string_key;
+	EXPECT_EQ(tpl->type(hash_key), "hash") << "Expected type hash for key: " << hash_key;
+
+	// Clean up
+	tpl->del(string_key);
+	tpl->del(hash_key);
 }
 
 int main(int argc, char **argv) {

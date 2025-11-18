@@ -103,6 +103,31 @@ namespace janus {
 			return result;
 		}
 
+		/**
+		 * @brief Incrementally iterates the fields and values of a hash stored at key.
+		 * @param key The hash key (K).
+		 * @param cursor The scan cursor.
+		 * @param pattern The pattern to match fields against.
+		 * @param count The number of elements to return. This is a hint to the server, not an upper limit.
+		 * @param hash_map An unordered_map to store the matching field-value pairs.
+		 * @return The new cursor. (The cursor > 0 indicates more fields to scan.)
+		 * @attention
+		 *
+		 * - the count is just a hint to the server, not an upper limit.
+		 * - the returned cursor > 0 indicates more keys to scan, not that is an index of offset.
+		 */
+		uint64_t hscan(const K &key, uint64_t cursor, const K &pattern, unsigned int count,
+					   std::unordered_map<K, V> &hash_map) override {
+			std::unordered_map<std::string, std::string> serialized_map;
+			auto new_cursor = tpl.get_connection().hscan(tpl.serialize_key(key), cursor, tpl.serialize_key(pattern),
+														 count, serialized_map);
+			hash_map.clear();
+			for (const auto &pair: serialized_map) {
+				hash_map.emplace(tpl.deserialize_key(pair.first), tpl.deserialize_value(pair.second));
+			}
+			return new_cursor;
+		}
+
 		bool hset(const K &key, const K &field, const V &value) override {
 			return tpl.get_connection().hset(tpl.serialize_key(key), tpl.serialize_key(field),
 											 tpl.serialize_value(value));

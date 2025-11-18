@@ -36,14 +36,7 @@ protected:
 		auto [redis_host, redis_port] = get_redis_connection_params();
 
 		// 2. Create underlying connection
-		try {
-			conn = std::make_shared<janus::redis_connection>(redis_host, redis_port);
-		}
-		catch (const std::runtime_error &e) {
-			// If connection fails, skip all tests in this fixture
-			GTEST_SKIP() << "Skipping test: Could not connect to Redis at " << redis_host << ":" << redis_port
-						 << ". Error: " << e.what();
-		}
+		conn = std::make_shared<janus::redis_connection>(redis_host, redis_port);
 
 		// 3. Create Serializers
 		k_serializer = std::make_shared<janus::string_serializer<key_type>>();
@@ -179,6 +172,40 @@ TEST_F(hash_operations_test, hkeys_and_hvals) {
 	EXPECT_TRUE(val_set.count("red"));
 	EXPECT_TRUE(val_set.count("yellow"));
 	EXPECT_TRUE(val_set.count("purple"));
+}
+
+TEST_F(hash_operations_test, hscan) {
+	// Test purpose: Insert several fields into a hash, scan them using hscan, and verify the existence of the fields.
+	key_type test_key = "test_hash_hscan";
+
+	// Insert fields
+	std::vector<std::pair<std::string, value_type>> fields{
+		{"f0", "0"}, {"f1", "1"}, {"f2", "2"}, {"f3", "3"}, {"f4", "4"}};
+
+	for (const auto &p: fields) {
+		ASSERT_TRUE(hash_ops().hset(test_key, p.first, p.second)) << "hset failed for field: " << p.first;
+	}
+
+	// Use hscan to scan all fields starting from cursor=0
+	std::unordered_map<std::string, value_type> hash_map;
+	// Note: The 'hscan' implementation needs to handle the iteration loop internally
+	// or this call assumes all data is returned in one go (since COUNT is 100 and data set is small).
+	auto cursor = hash_ops().hscan(test_key, 0, "*", 100, hash_map);
+
+	// According to Redis HSCAN semantics, the cursor should be 0 if the scan is complete.
+	EXPECT_EQ(cursor, 0u) << "Expected final cursor to be 0";
+
+	// Verify that all inserted fields are present in the scan result
+	std::unordered_set<std::string> found;
+	for (const auto &kv: hash_map) {
+		found.insert(kv.first);
+	}
+	for (const auto &p: fields) {
+		EXPECT_TRUE(found.count(p.first)) << "Field missing from hscan result: " << p.first;
+	}
+
+	// Clean up
+	tpl->del(test_key);
 }
 
 int main(int argc, char **argv) {

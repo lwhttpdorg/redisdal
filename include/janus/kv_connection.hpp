@@ -16,9 +16,35 @@ namespace janus {
 
 		virtual bool exists(const std::string &key) = 0;
 
+		/**
+		 * @brief Retrieves all keys matching the given pattern.
+		 * @param pattern The pattern to match keys against (e.g., "*", "user:*").
+		 * @param keys An unordered_set to store the matching keys.
+		 */
 		virtual void keys(const std::string &pattern, std::unordered_set<std::string> &keys) = 0;
 
+		/**
+		 * @brief Incrementally iterates the keys in the database.
+		 * @param cursor The scan cursor.
+		 * @param pattern The pattern to match keys against.
+		 * @param count The number of elements to return. This is a hint to the server, not an upper limit.
+		 * @return A scan_result containing the new cursor and the set of matching keys. (The cursor > 0 indicates more
+		 * keys to scan.)
+		 * @attention
+		 *
+		 * - the count is just a hint to the server, not an upper limit.
+		 * - the returned cursor > 0 indicates more keys to scan, not that is an index of offset.
+		 */
 		virtual string_scan_result scan(uint64_t cursor, const std::string &pattern, unsigned int count) = 0;
+
+		/**
+		 * @brief Returns the data type of the value stored at key.
+		 * @param key The key name to check.
+		 * @return The data type as a string (e.g., "string", "list", "set", "zset", "hash", or "none" if the key does
+		 * not exist).
+		 * @throw std::runtime_error if the Redis reply is not of expected type.
+		 */
+		virtual std::string type(const std::string &key) = 0;
 
 		virtual bool expire(const std::string &key, int seconds) = 0;
 
@@ -90,6 +116,22 @@ namespace janus {
 		virtual std::vector<std::string> hkeys(const std::string &key) = 0;
 
 		virtual std::vector<std::string> hvals(const std::string &key) = 0;
+
+		/**
+		 * @brief Incrementally iterates the fields and values of a hash stored at key.
+		 * @param key The hash key.
+		 * @param cursor The scan cursor.
+		 * @param pattern The pattern to match fields against.
+		 * @param count The number of elements to return. This is a hint to the server, not an upper limit.
+		 * @param hash_map An unordered_map to store the matching field-value pairs.
+		 * @return The new cursor. (The cursor > 0 indicates more fields to scan.)
+		 * @attention
+		 *
+		 * - the count is just a hint to the server, not an upper limit.
+		 * - the returned cursor > 0 indicates more keys to scan, not that is an index of offset.
+		 */
+		virtual uint64_t hscan(const std::string &key, uint64_t &cursor, const std::string &pattern, unsigned int count,
+							   std::unordered_map<std::string, std::string> &hash_map) = 0;
 
 		virtual long long hdel(const std::string &key, const std::string &hash_key) = 0;
 

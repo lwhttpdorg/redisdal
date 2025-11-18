@@ -105,9 +105,6 @@ Windows (PowerShell):
 $env:REDIS_HOST="172.17.57.112"; $env:REDIS_PORT="6379"; ctest --test-dir build --verbose
 ```
 
-Note: If the tests fail to connect to the specified Redis instance, they will be automatically skipped (`GTEST_SKIP`),
-allowing CTest to complete without reporting connection failures as test errors.
-
 ## 🚀 Usage in Your Project
 
 Janus is an `INTERFACE` library. You integrate it into your own CMake project by linking your targets against the

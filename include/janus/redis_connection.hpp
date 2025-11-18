@@ -39,6 +39,18 @@ namespace janus {
 			}
 		}
 
+		/**
+		 * @brief Incrementally iterates the keys in the database.
+		 * @param cursor The scan cursor.
+		 * @param pattern The pattern to match keys against.
+		 * @param count The number of elements to return. This is a hint to the server, not an upper limit.
+		 * @return A scan_result containing the new cursor and the set of matching keys. (The cursor > 0 indicates more
+		 * keys to scan.)
+		 * @attention
+		 *
+		 * - the count is just a hint to the server, not an upper limit.
+		 * - the returned cursor > 0 indicates more keys to scan, not that is an index of offset.
+		 */
 		string_scan_result scan(uint64_t cursor, const std::string &pattern, unsigned int count) override {
 			string_scan_result result{0, {}};
 			const std::string cursor_str = std::to_string(cursor);
@@ -61,12 +73,21 @@ namespace janus {
 				if (r->element[1]->type == REDIS_REPLY_ARRAY) {
 					for (size_t i = 0; i < r->element[1]->elements; ++i) {
 						if (r->element[1]->element[i]->type == REDIS_REPLY_STRING) {
-							result.keys.emplace(r->element[1]->element[i]->str, r->element[1]->element[i]->len);
+							std::string key(r->element[1]->element[i]->str, r->element[1]->element[i]->len);
+							result.keys.insert(std::move(key));
 						}
 					}
 				}
 			}
 			return result;
+		}
+
+		std::string type(const std::string &key) override {
+			auto r = exec("TYPE %s", key.c_str());
+			if (r->type == REDIS_REPLY_STATUS) {
+				return std::string(r->str, r->len);
+			}
+			throw std::runtime_error("TYPE: unexpected reply type");
 		}
 
 		bool expire(const std::string &key, int seconds) override {
@@ -315,6 +336,52 @@ namespace janus {
 				}
 			}
 			return result;
+		}
+
+		/* @brief Incrementally iterates the fields and values of a hash stored at key.
+		 * @param key The hash key.
+		 * @param cursor The scan cursor.
+		 * @param pattern The pattern to match fields against.
+		 * @param count The number of elements to return. This is a hint to the server, not an limit.
+		 * @param hash_map An unordered_map to store the matching field-value pairs.
+		 * @return The new cursor. (The cursor > 0 indicates more fields to scan.)
+		 * @attention
+		 *
+		 * - the count is just a hint to the server, not an upper limit.
+		 * - the returned cursor > 0 indicates more keys to scan, not that is an index of offset.
+		 */
+		uint64_t hscan(const std::string &key, uint64_t &cursor, const std::string &pattern, unsigned int count,
+					   std::unordered_map<std::string, std::string> &hash_map) override {
+			const std::string cursor_str = std::to_string(cursor);
+			auto r = exec("HSCAN %s %s MATCH %s COUNT %u", key.c_str(), cursor_str.c_str(), pattern.c_str(), count);
+			if (r->type == REDIS_REPLY_ARRAY && r->elements == 2) {
+				// First element is the new cursor
+				if (r->element[0]->type == REDIS_REPLY_STRING) {
+					try {
+						std::string cursor_reply(r->element[0]->str, r->element[0]->len);
+						cursor = std::stoull(cursor_reply);
+					}
+					catch (const std::exception &e) {
+						throw std::runtime_error("HSCAN: failed to convert cursor to uint64_t: "
+												 + std::string(e.what()));
+					}
+				}
+				else {
+					throw std::runtime_error("HSCAN: unexpected cursor reply type or missing cursor.");
+				}
+				// Second element is the array of field-value pairs
+				if (r->element[1]->type == REDIS_REPLY_ARRAY) {
+					for (size_t i = 0; i + 1 < r->element[1]->elements; i += 2) {
+						if (r->element[1]->element[i]->type == REDIS_REPLY_STRING
+							&& r->element[1]->element[i + 1]->type == REDIS_REPLY_STRING) {
+							std::string field(r->element[1]->element[i]->str, r->element[1]->element[i]->len);
+							std::string value(r->element[1]->element[i + 1]->str, r->element[1]->element[i + 1]->len);
+							hash_map.emplace(std::move(field), std::move(value));
+						}
+					}
+				}
+			}
+			return cursor;
 		}
 
 		long long hdel(const std::string &key, const std::string &hash_key) override {
