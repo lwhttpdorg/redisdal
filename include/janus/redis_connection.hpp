@@ -342,7 +342,7 @@ namespace janus {
 		 * @param key The hash key.
 		 * @param cursor The scan cursor.
 		 * @param pattern The pattern to match fields against.
-		 * @param count The number of elements to return. This is a hint to the server, not an limit.
+		 * @param count The number of elements to return. This is a hint to the server, not a limit.
 		 * @param hash_map An unordered_map to store the matching field-value pairs.
 		 * @return The new cursor. (The cursor > 0 indicates more fields to scan.)
 		 * @attention
@@ -838,6 +838,42 @@ namespace janus {
 			throw std::runtime_error("ZINCRBY: unexpected reply type");
 		}
 
+		cmd_result eval(const std::string &script, const std::vector<std::string> &keys,
+						const std::vector<std::string> &args) override {
+			std::vector<const char *> argv;
+			std::vector<size_t> argvlen;
+			argv.push_back("EVAL");
+			argvlen.push_back(4);
+			argv.push_back(script.c_str());
+			argvlen.push_back(script.size());
+			std::string num_keys_str = std::to_string(keys.size());
+			argv.push_back(num_keys_str.c_str());
+			argvlen.push_back(num_keys_str.size());
+			for (const auto &k: keys) {
+				argv.push_back(k.c_str());
+				argvlen.push_back(k.size());
+			}
+			for (const auto &a: args) {
+				argv.push_back(a.c_str());
+				argvlen.push_back(a.size());
+			}
+			auto r = execv(argv, argvlen);
+			return parse_reply(r.get());
+		}
+
+		cmd_result command(const std::string &cmd, const std::vector<std::string> &args) override {
+			std::vector<const char *> argv;
+			std::vector<size_t> argvlen;
+			argv.push_back(cmd.c_str());
+			argvlen.push_back(cmd.size());
+			for (const auto &a: args) {
+				argv.push_back(a.c_str());
+				argvlen.push_back(a.size());
+			}
+			auto r = execv(argv, argvlen);
+			return parse_reply(r.get());
+		}
+
 	protected:
 		struct reply_deleter {
 			void operator()(redisReply *r) const noexcept {
@@ -845,6 +881,33 @@ namespace janus {
 			}
 		};
 		using reply_ptr = std::unique_ptr<redisReply, reply_deleter>;
+
+		// parse redis reply to cmd_result
+		static cmd_result parse_reply(const redisReply *r) {
+			if (!r) return cmd_result::make_error("Null reply");
+			switch (r->type) {
+				case REDIS_REPLY_STRING:
+					return cmd_result::make_string(std::string(r->str, r->len));
+				case REDIS_REPLY_INTEGER:
+					return cmd_result::make_integer(r->integer);
+				case REDIS_REPLY_ARRAY: {
+					std::vector<cmd_result> elements;
+					elements.reserve(r->elements);
+					for (size_t i = 0; i < r->elements; ++i) {
+						elements.push_back(parse_reply(r->element[i]));
+					}
+					return cmd_result::make_array(std::move(elements));
+				}
+				case REDIS_REPLY_NIL:
+					return cmd_result::make_nil();
+				case REDIS_REPLY_STATUS:
+					return cmd_result::make_status(std::string(r->str, r->len));
+				case REDIS_REPLY_ERROR:
+					return cmd_result::make_error(std::string(r->str, r->len));
+				default:
+					return cmd_result::make_error("Unknown reply type");
+			}
+		}
 
 		reply_ptr exec(const char *fmt, ...) const {
 			va_list ap;

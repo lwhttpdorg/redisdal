@@ -181,7 +181,7 @@ TEST_F(redis_operations_test, ttl_and_expire) {
 TEST_F(redis_operations_test, pttl_and_pexpire) {
 	key_type test_key = test_key_pttl;
 	constexpr int pttl_milliseconds = 5000; // 5 seconds
-	constexpr int sleep_milliseconds = 2000; // 1 second
+	constexpr int sleep_milliseconds = 2000; // 2 second
 
 	// 1. Test PTTL on non-existent key (should return -2)
 	EXPECT_EQ(tpl->pttl(non_existent_key), -2) << "PTTL on non-existent key must return -2.";
@@ -208,8 +208,8 @@ TEST_F(redis_operations_test, pttl_and_pexpire) {
 	EXPECT_GT(remaining_pttl_after_delay, 0) << "PTTL must still be positive after delay.";
 	// The remaining PTTL must be less than the initial remaining PTTL minus the sleep time (with a small tolerance for
 	// latency).
-	EXPECT_GE(remaining_pttl_after_delay, remaining_pttl - sleep_milliseconds)
-		<< "PTTL must decrease by at least the sleep time.";
+	EXPECT_LE(remaining_pttl_after_delay, remaining_pttl - sleep_milliseconds)
+		<< "PTTL must decrease by at least the sleep time (actual decay >= sleep time).";
 }
 
 // -----------------------------------------------------------------------------
@@ -253,7 +253,6 @@ TEST_F(redis_operations_test, template_scan_iteration) {
 	const key_type base_key = "tpl_scan_test:";
 	const std::string pattern = base_key + "*";
 	constexpr int total_keys = 25; // Keys to create
-	constexpr int scan_count = 10; // Batch size per scan call
 
 	std::unordered_set<key_type> expected_keys;
 
@@ -273,6 +272,7 @@ TEST_F(redis_operations_test, template_scan_iteration) {
 	int iteration_count = 0;
 
 	do {
+		constexpr int scan_count = 10;
 		auto result = tpl->scan(cursor, pattern, scan_count);
 		cursor = result.cursor;
 		// Accumulate scanned keys

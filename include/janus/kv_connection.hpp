@@ -341,5 +341,16 @@ namespace janus {
 		 * @return The new score of the member.
 		 */
 		virtual double zincrby(const std::string &key, double increment, const std::string &member) = 0;
+
+		/**
+		 * @brief Returns the number of members in a sorted set.
+		 * @param key The sorted set key.
+		 * @return The number of members in the sorted set, or 0 if the key does not exist.
+		 */
+		virtual cmd_result eval(const std::string &script, const std::vector<std::string> &keys,
+								const std::vector<std::string> &args) = 0;
+
+		// execute a Redis command
+		virtual cmd_result command(const std::string &cmd, const std::vector<std::string> &args) = 0;
 	};
 }
