@@ -1,4 +1,4 @@
-name: CMake Build & Test with Redis 8 (Debian)
+name: CMake Build & Test with Redis 8 (Ubuntu Runner)
 
 on:
   push:
@@ -10,18 +10,18 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
-    container: debian:stable-slim
+
     services:
       redis:
-        image: redis:8 
+        image: redis:8
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
         ports:
-          - 6379:6379 
-          
+          - 6379:6379
+
     strategy:
       matrix:
         build_type: [ Debug, Release ]
@@ -31,8 +31,8 @@ jobs:
 
       - name: Setup Build Dependencies & Redis Tools
         run: |
-          apt-get update
-          apt-get install -y cmake build-essential libhiredis-dev git
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential libhiredis-dev git
 
       - name: Configure CMake
         run: >
