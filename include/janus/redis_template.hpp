@@ -26,15 +26,21 @@ namespace janus {
 		/* Set expiration for a key */
 		virtual bool expire(const K &key, long long seconds) = 0;
 		/* Set expiration for a key in milliseconds */
-		virtual bool pexpire(const std::string &key, int milliseconds) = 0;
+		virtual bool pexpire(const K &key, int milliseconds) = 0;
 		/* Delete a single key */
 		virtual long long del(const K &key) = 0;
 		/* Delete multiple keys */
 		virtual long long del(const std::vector<K> &keys) = 0;
 		/* Get the time to live for a key in seconds */
-		virtual int64_t ttl(const std::string &key) = 0;
+		virtual int64_t ttl(const K &key) = 0;
 		/* Get the time to live for a key in milliseconds */
-		virtual int64_t pttl(const std::string &key) = 0;
+		virtual int64_t pttl(const K &key) = 0;
+		/* Get the data type of the value stored at key */
+		virtual std::string type(const K &key) = 0;
+		/* Evaluate lua script */
+		virtual cmd_result eval(const std::string &script, const std::vector<K> &keys, const std::vector<V> &args) = 0;
+		/* Execute a raw Redis command */
+		virtual cmd_result exec_cmd(const std::string &cmd, const std::vector<std::string> &args) = 0;
 		/* String operations view */
 		virtual value_operations<K, V> &ops_for_value() = 0;
 		/* Hash operations view */
@@ -93,7 +99,7 @@ namespace janus {
 			return result;
 		}
 
-		std::string type(const K &key) {
+		std::string type(const K &key) override {
 			auto serialized_key = this->serialize_key(key);
 			return connection->type(serialized_key);
 		}
@@ -103,7 +109,7 @@ namespace janus {
 			return connection->expire(serialized_key, seconds);
 		}
 
-		bool pexpire(const std::string &key, int milliseconds) override {
+		bool pexpire(const K &key, int milliseconds) override {
 			auto serialized_key = this->serialize_key(key);
 			return connection->pexpire(serialized_key, milliseconds);
 		}
@@ -114,21 +120,39 @@ namespace janus {
 		}
 
 		long long del(const std::vector<K> &keys) override {
-			std::vector<K> s_keys;
+			std::vector<std::string> s_keys;
+			s_keys.reserve(keys.size());
+
 			for (const auto &key: keys) {
 				s_keys.push_back(this->serialize_key(key));
 			}
 			return connection->del(s_keys);
 		}
 
-		int64_t ttl(const std::string &key) override {
+		int64_t ttl(const K &key) override {
 			auto serialized_key = this->serialize_key(key);
 			return connection->ttl(serialized_key);
 		}
 
-		int64_t pttl(const std::string &key) override {
+		int64_t pttl(const K &key) override {
 			auto serialized_key = this->serialize_key(key);
 			return connection->pttl(serialized_key);
+		}
+
+		cmd_result eval(const std::string &script, const std::vector<K> &keys, const std::vector<V> &args) override {
+			std::vector<std::string> s_keys;
+			for (const auto &key: keys) {
+				s_keys.push_back(this->serialize_key(key));
+			}
+			std::vector<std::string> s_args;
+			for (const auto &arg: args) {
+				s_args.push_back(this->serialize_value(arg));
+			}
+			return connection->eval(script, s_keys, s_args);
+		}
+
+		cmd_result exec_cmd(const std::string &cmd, const std::vector<std::string> &args) override {
+			return connection->command(cmd, args);
 		}
 
 		// ==========================================================
@@ -171,11 +195,12 @@ namespace janus {
 			return value_serializer->deserialize(data);
 		}
 
-		kv_connection &get_connection() {
+		[[nodiscard]] kv_connection &get_connection() const {
 			return *connection;
 		}
 
 	private:
+		// --- Dependencies (Shared ownership) ---
 		std::shared_ptr<kv_connection> connection;
 		std::shared_ptr<serializer<K>> key_serializer;
 		std::shared_ptr<serializer<V>> value_serializer;

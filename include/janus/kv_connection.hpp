@@ -343,14 +343,21 @@ namespace janus {
 		virtual double zincrby(const std::string &key, double increment, const std::string &member) = 0;
 
 		/**
-		 * @brief Returns the number of members in a sorted set.
-		 * @param key The sorted set key.
-		 * @return The number of members in the sorted set, or 0 if the key does not exist.
+		 * @brief Evaluate a Lua script server-side.
+		 * @param script The Lua script to evaluate.
+		 * @param keys The keys that the script will access.
+		 * @param args The arguments to pass to the script.
+		 * @return The result of the script execution as a cmd_result.
 		 */
 		virtual cmd_result eval(const std::string &script, const std::vector<std::string> &keys,
 								const std::vector<std::string> &args) = 0;
 
-		// execute a Redis command
+		/**
+		 * @brief Sends a raw command to the Redis server.
+		 * @param cmd The command name.
+		 * @param args The arguments for the command.
+		 * @return The result of the command execution as a cmd_result.
+		 */
 		virtual cmd_result command(const std::string &cmd, const std::vector<std::string> &args) = 0;
 	};
 }

@@ -14,7 +14,7 @@
 #include "test_env.hpp"
 
 // The Test Fixture class, implementing SetUp/TearDown logic
-class redis_operations_test: public testing::Test {
+class key_operations_test: public testing::Test {
 protected:
 	// Type aliases
 	using key_type = std::string;
@@ -86,7 +86,7 @@ protected:
 // -----------------------------------------------------------------------------
 
 // Test: set creates key, exists returns true, del removes key, exists returns false.
-TEST_F(redis_operations_test, exists_set_del_single) {
+TEST_F(key_operations_test, exists_set_del_single) {
 	key_type test_key = test_key_single;
 
 	// 1. Initial state: Key should not exist
@@ -111,7 +111,7 @@ TEST_F(redis_operations_test, exists_set_del_single) {
 }
 
 // Test: deleting multiple keys, including non-existent ones, and verifying deletion.
-TEST_F(redis_operations_test, del_multiple) {
+TEST_F(key_operations_test, del_multiple) {
 	key_type key_a = test_key_del_a;
 	key_type key_b = test_key_del_b;
 	key_type key_c_non_existent = non_existent_key; // A key guaranteed not to exist
@@ -141,7 +141,7 @@ TEST_F(redis_operations_test, del_multiple) {
 
 // Test: Set TTL, then verify that the value read by ttl() is <= the set value.
 // Test: ttl() return values for non-existent key (-2), persistent key (-1), and expiring key (> 0).
-TEST_F(redis_operations_test, ttl_and_expire) {
+TEST_F(key_operations_test, ttl_and_expire) {
 	key_type test_key = test_key_ttl;
 	constexpr long long ttl_seconds = 5;
 
@@ -178,7 +178,7 @@ TEST_F(redis_operations_test, ttl_and_expire) {
 
 // Test: Set PTTL, then verify that the value read by pttl() is <= the set value.
 // Test: pttl() return values for non-existent key (-2), persistent key (-1), and expiring key (> 0).
-TEST_F(redis_operations_test, pttl_and_pexpire) {
+TEST_F(key_operations_test, pttl_and_pexpire) {
 	key_type test_key = test_key_pttl;
 	constexpr int pttl_milliseconds = 5000; // 5 seconds
 	constexpr int sleep_milliseconds = 2000; // 2 second
@@ -217,7 +217,7 @@ TEST_F(redis_operations_test, pttl_and_pexpire) {
 // -----------------------------------------------------------------------------
 
 // Test: Verify redis_template's keys(pattern) correctly finds and deserializes keys.
-TEST_F(redis_operations_test, template_keys_pattern_matching) {
+TEST_F(key_operations_test, template_keys_pattern_matching) {
 	const key_type base_key = "tpl_keys_test:";
 	const std::string pattern_prefix = base_key + "*";
 
@@ -249,7 +249,7 @@ TEST_F(redis_operations_test, template_keys_pattern_matching) {
 // -----------------------------------------------------------------------------
 
 // Test: Verify redis_template's scan() iterates through all matching keys, handling cursor and deserialization.
-TEST_F(redis_operations_test, template_scan_iteration) {
+TEST_F(key_operations_test, template_scan_iteration) {
 	const key_type base_key = "tpl_scan_test:";
 	const std::string pattern = base_key + "*";
 	constexpr int total_keys = 25; // Keys to create
@@ -307,7 +307,7 @@ TEST_F(redis_operations_test, template_scan_iteration) {
 	tpl->del(keys_to_delete);
 }
 
-TEST_F(redis_operations_test, type) {
+TEST_F(key_operations_test, type) {
 	// Test purpose: Verify that redis_template::type returns the correct string description for different data types
 	key_type string_key = "test_type_string";
 	key_type hash_key = "test_type_hash";

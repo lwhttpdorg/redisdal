@@ -28,15 +28,17 @@ macro(add_janus_test TEST_NAME FILENAME)
 	)
 endmacro()
 
+# Lua and Raw Command Test
+add_janus_test(lua_and_raw_cmd_test lua_and_raw_cmd_test.cpp)
 # Redis Operations Test
-add_janus_test(redis_operations_test redis_operations_test.cpp)
+add_janus_test(key_ops_test key_ops_test.cpp)
 # String Operations Test
-add_janus_test(string_operations_test string_test.cpp)
+add_janus_test(string_ops_test string_ops_test.cpp)
 # Hash Operations Test
-add_janus_test(hash_operations_test hash_test.cpp)
+add_janus_test(hash_ops_test hash_ops_test.cpp)
 # List Operations Test
-add_janus_test(list_operations_test list_test.cpp)
+add_janus_test(list_ops_test list_ops_test.cpp)
 # Set Operations Test
-add_janus_test(set_operations_test set_test.cpp)
+add_janus_test(set_ops_test set_ops_test.cpp)
 # Sorted Set (ZSet) Operations Test
-add_janus_test(zset_operations_test zset_test.cpp)
+add_janus_test(zset_ops_test zset_ops_test.cpp)

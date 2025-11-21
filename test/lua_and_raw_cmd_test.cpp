@@ -18,7 +18,6 @@ protected:
 	std::string redis_host;
 	unsigned short redis_port{DEFAULT_REDIS_PORT};
 
-	std::shared_ptr<janus::kv_connection> conn;
 	std::shared_ptr<janus::serializer<key_type>> k_serializer;
 	std::shared_ptr<janus::serializer<value_type>> v_serializer;
 	std::unique_ptr<janus::redis_template<key_type, value_type>> tpl;
@@ -28,7 +27,7 @@ protected:
 		redis_host = h;
 		redis_port = p;
 
-		conn = std::make_shared<janus::redis_connection>(redis_host, redis_port);
+		std::shared_ptr<janus::kv_connection> conn = std::make_shared<janus::redis_connection>(redis_host, redis_port);
 
 		k_serializer = std::make_shared<janus::string_serializer<key_type>>();
 		v_serializer = std::make_shared<janus::string_serializer<value_type>>();
@@ -60,7 +59,7 @@ TEST_F(execute_cmd_lua_test, exec_command_set_get) {
 
 	try {
 		std::vector<std::string> args = {key, "4242"};
-		conn->command("SET", args);
+		tpl->exec_cmd("SET", args);
 
 		// Verify using high-level value operations
 		auto val = value_ops().get(key);
@@ -83,10 +82,10 @@ TEST_F(execute_cmd_lua_test, eval_lua_incr_script) {
 	const std::string script = "return redis.call('INCRBY', KEYS[1], ARGV[1])";
 
 	try {
-		std::vector<std::string> keys = {key};
-		std::vector<std::string> args = {"7"};
+		std::vector<key_type> keys = {key};
+		std::vector<value_type> args = {7};
 
-		janus::cmd_result reply = conn->eval(script, keys, args);
+		janus::cmd_result reply = tpl->eval(script, keys, args);
 
 		ASSERT_EQ(reply.get_type(), janus::cmd_result::result_type::INTEGER)
 			<< "Lua script did not return an integer result";
