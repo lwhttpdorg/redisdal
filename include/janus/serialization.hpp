@@ -60,7 +60,7 @@ namespace janus {
 			else if constexpr (std::is_same_v<T, bool>) {
 				std::string lower_s;
 				lower_s.resize(s.size());
-				std::transform(s.begin(), s.end(), lower_s.begin(), ::tolower);
+				std::transform(s.begin(), s.end(), lower_s.begin(), tolower);
 
 				if (lower_s == "true" || lower_s == "1") {
 					return true;
@@ -95,14 +95,14 @@ namespace janus {
 	template<typename T>
 	class string_serializable<T, std::enable_if_t<!std::is_arithmetic_v<T>>> {
 	public:
-		static std::string to_string(const T &t) {
+		static std::string to_string(const T &) {
 			static_assert(
 				sizeof(T) == 0,
 				"Non-arithmetic types must provide their own specialization of string_serializable<T>::to_string");
 			return {};
 		}
 
-		static T from_string(const std::string &s) {
+		static T from_string(const std::string &) {
 			static_assert(
 				sizeof(T) == 0,
 				"Non-arithmetic types must provide their own specialization of string_serializable<T>::from_string");

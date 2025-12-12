@@ -20,15 +20,6 @@ protected:
 	using key_type = std::string;
 	using value_type = unsigned int;
 
-	// Connection parameters
-	std::string redis_host;
-	unsigned short redis_port{DEFAULT_REDIS_PORT};
-
-	std::shared_ptr<janus::kv_connection> conn;
-	std::shared_ptr<janus::serializer<key_type>> k_serializer;
-	std::shared_ptr<janus::serializer<value_type>> v_serializer;
-	std::unique_ptr<janus::redis_template<key_type, value_type>> tpl;
-
 	// Test Keys
 	const key_type test_key_single = "ops_test_single_key";
 	const key_type test_key_ttl = "ops_test_ttl_key";
@@ -37,19 +28,24 @@ protected:
 	const key_type test_key_del_b = "ops_test_del_b";
 	const key_type non_existent_key = "ops_test_non_existent_key_for_del";
 
+	std::shared_ptr<janus::kv_connection> connection;
+	std::shared_ptr<janus::serializer<key_type>> k_serializer;
+	std::shared_ptr<janus::serializer<value_type>> v_serializer;
+	std::unique_ptr<janus::redis_template<key_type, value_type>> tpl;
+
 	void SetUp() override {
 		// 1. Retrieve connection parameters from environment variables
-		auto [redis_host, redis_port] = get_redis_connection_params();
+		std::string redis_url = get_redis_connection_url();
 
 		// 2. Create underlying connection
-		conn = std::make_shared<janus::redis_connection>(redis_host, redis_port);
+		connection = std::make_shared<janus::redis_connection>(redis_url);
 
 		// 3. Create Serializers
 		k_serializer = std::make_shared<janus::string_serializer<key_type>>();
 		v_serializer = std::make_shared<janus::string_serializer<value_type>>();
 
 		// 4. Construct redis_template
-		tpl = std::make_unique<janus::redis_template<key_type, value_type>>(conn, k_serializer, v_serializer);
+		tpl = std::make_unique<janus::redis_template<key_type, value_type>>(*connection, *k_serializer, *v_serializer);
 
 		// 5. Clean up test key
 		clear_test_keys();
@@ -123,7 +119,7 @@ TEST_F(key_operations_test, del_multiple) {
 	ASSERT_FALSE(tpl->exists(key_c_non_existent)) << "Setup failed: Test key C must not exist.";
 
 	// 2. DEL multiple keys (A, B exist; C does not)
-	std::vector<key_type> keys_to_delete = {key_a, key_b, key_c_non_existent};
+	std::vector keys_to_delete = {key_a, key_b, key_c_non_existent};
 	long long deleted_count = tpl->del(keys_to_delete);
 
 	// 3. Verify return value: Should be 2 (only A and B were deleted)
@@ -313,10 +309,10 @@ TEST_F(key_operations_test, type) {
 	key_type hash_key = "test_type_hash";
 
 	// 1) Create a string type key
-	ASSERT_TRUE(tpl->ops_for_value().set(string_key, static_cast<value_type>(123)));
+	ASSERT_TRUE(tpl->ops_for_value().set(string_key, 123));
 
 	// 2) Create a hash type key (insert one field)
-	ASSERT_TRUE(tpl->ops_for_hash().hset(hash_key, std::string("field1"), static_cast<value_type>(1)));
+	ASSERT_TRUE(tpl->ops_for_hash().hset(hash_key, std::string("field1"), 1));
 
 	// Verify the return value of type()
 	EXPECT_EQ(tpl->type(string_key), "string") << "Expected type string for key: " << string_key;

@@ -20,28 +20,24 @@ protected:
 	const key_type test_key_1 = "test_set_a";
 	const key_type test_key_2 = "test_set_b";
 
-	// Connection parameters
-	std::string redis_host;
-	unsigned short redis_port{DEFAULT_REDIS_PORT};
-
-	std::shared_ptr<janus::kv_connection> conn;
+	std::shared_ptr<janus::kv_connection> connection;
 	std::shared_ptr<janus::serializer<key_type>> k_serializer;
 	std::shared_ptr<janus::serializer<value_type>> v_serializer;
 	std::unique_ptr<janus::redis_template<key_type, value_type>> tpl;
 
 	void SetUp() override {
 		// 1. Retrieve connection parameters from environment variables
-		auto [redis_host, redis_port] = get_redis_connection_params();
+		std::string redis_url = get_redis_connection_url();
 
 		// 2. Create underlying connection
-		conn = std::make_shared<janus::redis_connection>(redis_host, redis_port);
+		connection = std::make_shared<janus::redis_connection>(redis_url);
 
 		// 3. Create Serializers
 		k_serializer = std::make_shared<janus::string_serializer<key_type>>();
 		v_serializer = std::make_shared<janus::string_serializer<value_type>>();
 
 		// 4. Construct redis_template
-		tpl = std::make_unique<janus::redis_template<key_type, value_type>>(conn, k_serializer, v_serializer);
+		tpl = std::make_unique<janus::redis_template<key_type, value_type>>(*connection, *k_serializer, *v_serializer);
 
 		// 5. Clean up test key
 		clear_test_keys();
@@ -96,7 +92,7 @@ TEST_F(set_operations_test, srem_and_smembers) {
 	std::vector<value_type> members = set_ops().smembers(test_key_1);
 
 	// Use unordered_set for robust comparison
-	std::unordered_set<value_type> member_set(members.begin(), members.end());
+	std::unordered_set member_set(members.begin(), members.end());
 	EXPECT_EQ(member_set.size(), 2);
 	EXPECT_TRUE(member_set.count("1"));
 	EXPECT_TRUE(member_set.count("3"));
@@ -110,10 +106,10 @@ TEST_F(set_operations_test, sinter) {
 	set_ops().sadd(test_key_2, {"2", "3", "4"});
 
 	// 1. Test SINTER (Expected: {2, 3})
-	std::vector<key_type> keys_to_intersect = {test_key_1, test_key_2};
+	std::vector keys_to_intersect = {test_key_1, test_key_2};
 	std::vector<value_type> intersection = set_ops().sinter(keys_to_intersect);
 
-	std::unordered_set<value_type> result_set(intersection.begin(), intersection.end());
+	std::unordered_set result_set(intersection.begin(), intersection.end());
 	EXPECT_EQ(result_set.size(), 2);
 	EXPECT_TRUE(result_set.count("2"));
 	EXPECT_TRUE(result_set.count("3"));

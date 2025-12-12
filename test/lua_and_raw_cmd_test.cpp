@@ -15,24 +15,22 @@ protected:
 	using key_type = std::string;
 	using value_type = unsigned long long;
 
-	std::string redis_host;
-	unsigned short redis_port{DEFAULT_REDIS_PORT};
-
 	std::shared_ptr<janus::serializer<key_type>> k_serializer;
 	std::shared_ptr<janus::serializer<value_type>> v_serializer;
 	std::unique_ptr<janus::redis_template<key_type, value_type>> tpl;
+	std::shared_ptr<janus::kv_connection> connection;
 
 	void SetUp() override {
-		auto [h, p] = get_redis_connection_params();
-		redis_host = h;
-		redis_port = p;
+		// 1. Retrieve connection parameters from environment variables
+		std::string redis_url = get_redis_connection_url();
 
-		std::shared_ptr<janus::kv_connection> conn = std::make_shared<janus::redis_connection>(redis_host, redis_port);
+		// 2. Create underlying connection
+		connection = std::make_shared<janus::redis_connection>(redis_url);
 
 		k_serializer = std::make_shared<janus::string_serializer<key_type>>();
 		v_serializer = std::make_shared<janus::string_serializer<value_type>>();
 
-		tpl = std::make_unique<janus::redis_template<key_type, value_type>>(conn, k_serializer, v_serializer);
+		tpl = std::make_unique<janus::redis_template<key_type, value_type>>(*connection, *k_serializer, *v_serializer);
 
 		clear_keys();
 	}
@@ -82,13 +80,12 @@ TEST_F(execute_cmd_lua_test, eval_lua_incr_script) {
 	const std::string script = "return redis.call('INCRBY', KEYS[1], ARGV[1])";
 
 	try {
-		std::vector<key_type> keys = {key};
+		std::vector keys = {key};
 		std::vector<value_type> args = {7};
 
-		janus::cmd_result reply = tpl->eval(script, keys, args);
+		janus::cmd_reply reply = tpl->eval(script, keys, args);
 
-		ASSERT_EQ(reply.get_type(), janus::cmd_result::result_type::INTEGER)
-			<< "Lua script did not return an integer result";
+		ASSERT_EQ(reply.get_type(), janus::reply_type::INTEGER) << "Lua script did not return an integer result";
 		std::optional<uint64_t> new_val = reply.get_integer();
 		ASSERT_TRUE(new_val.has_value()) << "Lua script returned no integer value";
 
@@ -101,6 +98,40 @@ TEST_F(execute_cmd_lua_test, eval_lua_incr_script) {
 	}
 	catch (const std::exception &e) {
 		FAIL() << "eval_lua_incr_script failed with exception: " << e.what();
+	}
+}
+
+// Test EVALSHA path and automatic reload when server reports NOSCRIPT
+TEST_F(execute_cmd_lua_test, eval_sha1_autoreload) {
+	const key_type key = "test_lua_incr_key";
+
+	// Initialize key to 100
+	ASSERT_TRUE(value_ops().set(key, 100ULL));
+
+	const std::string script = "return redis.call('INCRBY', KEYS[1], ARGV[1])";
+
+	try {
+		// Load script and get sha1
+		std::string sha = tpl->script_load(script);
+
+		std::vector keys = {key};
+		std::vector<value_type> args = {5};
+
+		// First call using EVALSHA should work
+		janus::cmd_reply r1 = tpl->eval_sha1(sha, keys, args);
+		ASSERT_EQ(r1.get_type(), janus::reply_type::INTEGER);
+		EXPECT_EQ(r1.get_integer().value_or(0), 105ULL);
+
+		// Flush server script cache to force NOSCRIPT on next EVALSHA
+		tpl->exec_cmd("SCRIPT", {"FLUSH"});
+
+		// Second call should trigger automatic reload and succeed
+		janus::cmd_reply r2 = tpl->eval_sha1(sha, keys, args);
+		ASSERT_EQ(r2.get_type(), janus::reply_type::INTEGER);
+		EXPECT_EQ(r2.get_integer().value_or(0), 110ULL);
+	}
+	catch (const std::exception &e) {
+		FAIL() << "eval_sha1_autoreload failed with exception: " << e.what();
 	}
 }
 

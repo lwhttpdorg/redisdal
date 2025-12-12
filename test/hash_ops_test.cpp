@@ -22,28 +22,24 @@ protected:
 
 	const key_type TEST_KEY = "test_hash_map";
 
-	// Connection parameters
-	std::string redis_host;
-	unsigned short redis_port{DEFAULT_REDIS_PORT};
-
-	std::shared_ptr<janus::kv_connection> conn;
+	std::shared_ptr<janus::kv_connection> connection;
 	std::shared_ptr<janus::serializer<key_type>> k_serializer;
 	std::shared_ptr<janus::serializer<value_type>> v_serializer;
 	std::unique_ptr<janus::redis_template<key_type, value_type>> tpl;
 
 	void SetUp() override {
 		// 1. Retrieve connection parameters from environment variables
-		auto [redis_host, redis_port] = get_redis_connection_params();
+		std::string redis_url = get_redis_connection_url();
 
 		// 2. Create underlying connection
-		conn = std::make_shared<janus::redis_connection>(redis_host, redis_port);
+		connection = std::make_shared<janus::redis_connection>(redis_url);
 
 		// 3. Create Serializers
 		k_serializer = std::make_shared<janus::string_serializer<key_type>>();
 		v_serializer = std::make_shared<janus::string_serializer<value_type>>();
 
 		// 4. Construct redis_template
-		tpl = std::make_unique<janus::redis_template<key_type, value_type>>(conn, k_serializer, v_serializer);
+		tpl = std::make_unique<janus::redis_template<key_type, value_type>>(*connection, *k_serializer, *v_serializer);
 
 		// 5. Clean up test key
 		clear_test_keys();
@@ -74,7 +70,7 @@ TEST_F(hash_operations_test, hset_hget_single) {
 	const value_type field_value = "value_data_A";
 
 	// 1. Test HSET
-	// hset returns true if the field was newly created or updated successfully.
+	// returns true if the field was newly created or updated successfully.
 	EXPECT_TRUE(hash_ops().hset(TEST_KEY, field_key, field_value)) << "HSET failed for a new field.";
 
 	// 2. Test HGET
@@ -158,7 +154,7 @@ TEST_F(hash_operations_test, hkeys_and_hvals) {
 	EXPECT_EQ(keys.size(), 3);
 
 	// Convert to set for order-independent comparison
-	std::unordered_set<key_type> key_set(keys.begin(), keys.end());
+	std::unordered_set key_set(keys.begin(), keys.end());
 	EXPECT_TRUE(key_set.count("k_apple"));
 	EXPECT_TRUE(key_set.count("k_banana"));
 	EXPECT_TRUE(key_set.count("k_grape"));
@@ -168,7 +164,7 @@ TEST_F(hash_operations_test, hkeys_and_hvals) {
 	EXPECT_EQ(values.size(), 3);
 
 	// Convert to set for order-independent comparison
-	std::unordered_set<value_type> val_set(values.begin(), values.end());
+	std::unordered_set val_set(values.begin(), values.end());
 	EXPECT_TRUE(val_set.count("red"));
 	EXPECT_TRUE(val_set.count("yellow"));
 	EXPECT_TRUE(val_set.count("purple"));

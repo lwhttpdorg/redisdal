@@ -1,26 +1,124 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdio>
 #include <memory>
 #include <stdexcept>
 #include <string>
 
 #include <hiredis/hiredis.h>
 
+#include "exception.hpp"
 #include "kv_connection.hpp"
 
 namespace janus {
-	class redis_connection: public kv_connection {
+
+	static constexpr size_t NUM_KEYS_BUF_SIZE = 32;
+	// Maximum number of keys allowed to be passed to EVAL/EVALSHA to avoid
+	// excessively large argv arrays and potential misuse. Adjust as needed.
+	static constexpr size_t MAX_SCRIPT_KEYS = 64;
+
+	enum class redis_scheme { TCP, UNIX, REDIS };
+
+	class redis_config {
 	public:
-		redis_connection(const std::string &host, const unsigned short port) {
-			context = redisConnect(host.c_str(), port);
-			if (!context || context->err) {
-				throw std::runtime_error("Redis connect failed");
-			}
+		redis_config() : scheme(redis_scheme::TCP), host("127.0.0.1"), port(6379), db(0) {
 		}
 
-		~redis_connection() override {
-			redisFree(context);
+		redis_scheme scheme;
+		std::string host;
+		unsigned short port;
+		std::string username;
+		std::string password;
+		unsigned int db;
+	};
+
+	struct query_info {
+		std::string username;
+		std::string password;
+		unsigned int db{0};
+	};
+
+	query_info parse_query_params(const std::string &query);
+
+	/**
+	 * @brief Parse Redis URL
+	 *
+	 * Accept a URL of the form:
+	 * - TCP:   `tcp://[user[:pass]@]host[:port]?db=N`
+	 * - Redis: `redis://[user[:pass]@]host[:port]?db=N`
+	 * - Unix:  `unix:///absolute/path/to/socket?db=N&auth=secret`
+	 * - Unix:  `unix:///absolute/path/to/socket?username=myuser&password=secret&db=0`
+	 *
+	 * Supports:
+	 * - Optional authentication (`user[:pass]@`, `?auth=secret`, or `?username=...&password=...`)
+	 * - IPv4, IPv6, and hostname formats
+	 * - Default port 6379 if not specified
+	 * - Default database index 0 if not specified
+	 *
+	 * @param url The Redis connection string.
+	 * @return redis_config The parsed configuration structure.
+	 * @throws std::invalid_argument If the scheme or format is invalid.
+	 */
+	redis_config parse_redis_url(const std::string &url);
+
+	struct redis_context_deleter {
+		void operator()(redisContext *context) const noexcept {
+			if (nullptr != context) {
+				redisFree(context);
+			}
+		}
+	};
+
+	using redis_context_ptr = std::unique_ptr<redisContext, redis_context_deleter>;
+
+	struct reply_deleter {
+		void operator()(redisReply *reply) const noexcept {
+			if (nullptr != reply) {
+				freeReplyObject(reply);
+			}
+		}
+	};
+
+	using redis_reply_ptr = std::unique_ptr<redisReply, reply_deleter>;
+
+	class redis_connection: public kv_connection {
+	public:
+		explicit redis_connection(const std::string &url) {
+			const redis_config config = parse_redis_url(url);
+
+			switch (config.scheme) {
+				case redis_scheme::TCP:
+				case redis_scheme::REDIS:
+					context = redis_context_ptr(redisConnect(config.host.c_str(), config.port));
+					break;
+				case redis_scheme::UNIX:
+					context = redis_context_ptr(redisConnectUnix(config.host.c_str()));
+					break;
+			}
+			if (!context || context->err) {
+				throw std::runtime_error("Redis connect failed: " + url);
+			}
+
+			// If authentication info provided, attempt AUTH
+			if (!config.password.empty()) {
+				redis_reply_ptr auth_r = nullptr;
+				if (!config.username.empty()) {
+					auth_r = redis_reply_ptr{static_cast<redisReply *>(
+						redisCommand(context.get(), "AUTH %s %s", config.username.c_str(), config.password.c_str()))};
+				}
+				else {
+					auth_r = redis_reply_ptr{
+						static_cast<redisReply *>(redisCommand(context.get(), "AUTH %s", config.password.c_str()))};
+				}
+				if (!auth_r) {
+					throw std::runtime_error("AUTH command failed");
+				}
+				if (auth_r->type == REDIS_REPLY_ERROR) {
+					const std::string err(auth_r->str, auth_r->len);
+					throw std::runtime_error("AUTH failed: " + err);
+				}
+			}
 		}
 
 		bool exists(const std::string &key) override {
@@ -87,7 +185,7 @@ namespace janus {
 			if (reply->type == REDIS_REPLY_STATUS) {
 				return {reply->str, reply->len};
 			}
-			throw std::runtime_error("TYPE: unexpected reply type");
+			throw unexpected_reply_type_error("TYPE", "status", reply_type_name(reply->type));
 		}
 
 		bool expire(const std::string &key, int seconds) override {
@@ -104,7 +202,7 @@ namespace janus {
 			const auto reply = exec("TTL %s", key.c_str());
 
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("TTL: unexpected reply type");
+				throw unexpected_reply_type_error("TTL", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
 		}
@@ -113,7 +211,7 @@ namespace janus {
 			const auto reply = exec("PTTL %s", key.c_str());
 
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("PTTL: unexpected reply type");
+				throw unexpected_reply_type_error("PTTL", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
 		}
@@ -121,7 +219,7 @@ namespace janus {
 		long long del(const std::string &key) override {
 			const auto reply = exec("DEL %s", key.c_str());
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("DEL: unexpected reply type");
+				throw unexpected_reply_type_error("DEL", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
 		}
@@ -129,14 +227,14 @@ namespace janus {
 		long long del(const std::vector<std::string> &keys) override {
 			if (keys.empty()) return 0;
 			std::vector<const char *> argv;
-			std::vector<size_t> argvlen;
+			std::vector<size_t> argv_len;
 			argv.push_back("DEL");
-			argvlen.push_back(3);
+			argv_len.push_back(3);
 			for (auto &k: keys) {
 				argv.push_back(k.c_str());
-				argvlen.push_back(k.size());
+				argv_len.push_back(k.size());
 			}
-			const auto reply = execv(argv, argvlen);
+			const auto reply = execv(argv, argv_len);
 			return reply->type == REDIS_REPLY_INTEGER ? reply->integer : 0;
 		}
 
@@ -201,7 +299,7 @@ namespace janus {
 		long long incr(const std::string &key, long long delta) override {
 			const auto reply = exec("INCRBY %s %lld", key.c_str(), delta);
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("INCRBY: unexpected reply type");
+				throw unexpected_reply_type_error("INCRBY", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
 		}
@@ -209,7 +307,7 @@ namespace janus {
 		long long decr(const std::string &key, long long delta) override {
 			const auto reply = exec("DECRBY %s %lld", key.c_str(), delta);
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("DECRBY: unexpected reply type");
+				throw unexpected_reply_type_error("DECRBY", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
 		}
@@ -217,7 +315,7 @@ namespace janus {
 		long long append(const std::string &key, const std::string &value) override {
 			const auto reply = exec("APPEND %s %s", key.c_str(), value.c_str());
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("APPEND: unexpected reply type");
+				throw unexpected_reply_type_error("APPEND", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
 		}
@@ -234,7 +332,7 @@ namespace janus {
 			if (reply->type == REDIS_REPLY_STRING) {
 				return std::string(reply->str, reply->len);
 			}
-			throw std::runtime_error("Unexpected reply type in HGET");
+			throw unexpected_reply_type_error("HGET", "string or nil", reply_type_name(reply->type));
 		}
 
 		void hget(const std::string &key,
@@ -296,7 +394,7 @@ namespace janus {
 				argv.push_back(kv.second.c_str());
 				argv_len.push_back(kv.second.size());
 			}
-			const reply_ptr reply = execv(argv, argv_len);
+			const redis_reply_ptr reply = execv(argv, argv_len);
 			return reply->type == REDIS_REPLY_INTEGER && reply->integer >= 0;
 		}
 
@@ -384,7 +482,7 @@ namespace janus {
 		long long hdel(const std::string &key, const std::string &hash_key) override {
 			const auto reply = exec("HDEL %s %s", key.c_str(), hash_key.c_str());
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("HDEL: unexpected reply type");
+				throw unexpected_reply_type_error("HDEL", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
 		}
@@ -407,7 +505,7 @@ namespace janus {
 
 			const auto reply = execv(argv, argv_len);
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("HDEL: unexpected reply type");
+				throw unexpected_reply_type_error("HDEL", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
 		}
@@ -420,21 +518,21 @@ namespace janus {
 			if (values.empty()) return llen(key);
 
 			std::vector<const char *> argv;
-			std::vector<size_t> argvlen;
+			std::vector<size_t> argv_len;
 
 			argv.push_back("LPUSH");
-			argvlen.push_back(5);
+			argv_len.push_back(5);
 			argv.push_back(key.c_str());
-			argvlen.push_back(key.size());
+			argv_len.push_back(key.size());
 
 			for (const auto &v: values) {
 				argv.push_back(v.c_str());
-				argvlen.push_back(v.size());
+				argv_len.push_back(v.size());
 			}
 
-			const auto reply = execv(argv, argvlen);
+			const auto reply = execv(argv, argv_len);
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("LPUSH: unexpected reply type");
+				throw unexpected_reply_type_error("LPUSH", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
 		}
@@ -442,7 +540,7 @@ namespace janus {
 		long long lpush(const std::string &key, const std::string &value) override {
 			const auto reply = exec("LPUSH %s %s", key.c_str(), value.c_str());
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("LPUSH: unexpected reply type");
+				throw unexpected_reply_type_error("LPUSH", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
 		}
@@ -450,7 +548,7 @@ namespace janus {
 		long long rpush(const std::string &key, const std::string &value) override {
 			const auto reply = exec("RPUSH %s %s", key.c_str(), value.c_str());
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("RPUSH: unexpected reply type");
+				throw unexpected_reply_type_error("RPUSH", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
 		}
@@ -459,21 +557,21 @@ namespace janus {
 			if (values.empty()) return llen(key);
 
 			std::vector<const char *> argv;
-			std::vector<size_t> argvlen;
+			std::vector<size_t> argv_len;
 
 			argv.push_back("RPUSH");
-			argvlen.push_back(5);
+			argv_len.push_back(5);
 			argv.push_back(key.c_str());
-			argvlen.push_back(key.size());
+			argv_len.push_back(key.size());
 
 			for (const auto &v: values) {
 				argv.push_back(v.c_str());
-				argvlen.push_back(v.size());
+				argv_len.push_back(v.size());
 			}
 
-			const auto reply = execv(argv, argvlen);
+			const auto reply = execv(argv, argv_len);
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("RPUSH: unexpected reply type");
+				throw unexpected_reply_type_error("RPUSH", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
 		}
@@ -482,14 +580,14 @@ namespace janus {
 			const auto reply = exec("LPOP %s", key.c_str());
 			if (reply->type == REDIS_REPLY_NIL) return std::nullopt;
 			if (reply->type == REDIS_REPLY_STRING) return std::string(reply->str, reply->len);
-			throw std::runtime_error("LPOP: unexpected reply type");
+			throw unexpected_reply_type_error("LPOP", "string or nil", reply_type_name(reply->type));
 		}
 
 		std::optional<std::string> rpop(const std::string &key) override {
 			const auto reply = exec("RPOP %s", key.c_str());
 			if (reply->type == REDIS_REPLY_NIL) return std::nullopt;
 			if (reply->type == REDIS_REPLY_STRING) return std::string(reply->str, reply->len);
-			throw std::runtime_error("RPOP: unexpected reply type");
+			throw unexpected_reply_type_error("RPOP", "string or nil", reply_type_name(reply->type));
 		}
 
 		std::vector<std::string> lrange(const std::string &key, long long start, long long stop) override {
@@ -504,7 +602,7 @@ namespace janus {
 				}
 			}
 			else if (reply->type != REDIS_REPLY_NIL) {
-				throw std::runtime_error("LRANGE: unexpected reply type");
+				throw unexpected_reply_type_error("LRANGE", "array or nil", reply_type_name(reply->type));
 			}
 			return result;
 		}
@@ -512,7 +610,7 @@ namespace janus {
 		long long llen(const std::string &key) override {
 			const auto reply = exec("LLEN %s", key.c_str());
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("LLEN: unexpected reply type");
+				throw unexpected_reply_type_error("LLEN", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
 		}
@@ -525,21 +623,21 @@ namespace janus {
 			if (members.empty()) return 0;
 
 			std::vector<const char *> argv;
-			std::vector<size_t> argvlen;
+			std::vector<size_t> argv_len;
 
 			argv.push_back("SADD");
-			argvlen.push_back(4);
+			argv_len.push_back(4);
 			argv.push_back(key.c_str());
-			argvlen.push_back(key.size());
+			argv_len.push_back(key.size());
 
 			for (const auto &m: members) {
 				argv.push_back(m.c_str());
-				argvlen.push_back(m.size());
+				argv_len.push_back(m.size());
 			}
 
-			const auto reply = execv(argv, argvlen);
+			const auto reply = execv(argv, argv_len);
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("SADD: unexpected reply type");
+				throw unexpected_reply_type_error("SADD", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
 		}
@@ -548,21 +646,21 @@ namespace janus {
 			if (members.empty()) return 0;
 
 			std::vector<const char *> argv;
-			std::vector<size_t> argvlen;
+			std::vector<size_t> argv_len;
 
 			argv.push_back("SREM");
-			argvlen.push_back(4);
+			argv_len.push_back(4);
 			argv.push_back(key.c_str());
-			argvlen.push_back(key.size());
+			argv_len.push_back(key.size());
 
 			for (const auto &m: members) {
 				argv.push_back(m.c_str());
-				argvlen.push_back(m.size());
+				argv_len.push_back(m.size());
 			}
 
-			const auto reply = execv(argv, argvlen);
+			const auto reply = execv(argv, argv_len);
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("SREM: unexpected reply type");
+				throw unexpected_reply_type_error("SREM", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
 		}
@@ -579,7 +677,7 @@ namespace janus {
 				}
 			}
 			else if (reply->type != REDIS_REPLY_NIL) {
-				throw std::runtime_error("SMEMBERS: unexpected reply type");
+				throw unexpected_reply_type_error("SMEMBERS", "array or nil", reply_type_name(reply->type));
 			}
 			return result;
 		}
@@ -587,7 +685,7 @@ namespace janus {
 		long long scard(const std::string &key) override {
 			const auto reply = exec("SCARD %s", key.c_str());
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("SCARD: unexpected reply type");
+				throw unexpected_reply_type_error("SCARD", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
 		}
@@ -595,7 +693,7 @@ namespace janus {
 		bool sismember(const std::string &key, const std::string &member) override {
 			const auto reply = exec("SISMEMBER %s %s", key.c_str(), member.c_str());
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("SISMEMBER: unexpected reply type");
+				throw unexpected_reply_type_error("SISMEMBER", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer == 1;
 		}
@@ -604,7 +702,7 @@ namespace janus {
 			const auto reply = exec("SPOP %s", key.c_str());
 			if (reply->type == REDIS_REPLY_NIL) return std::nullopt;
 			if (reply->type == REDIS_REPLY_STRING) return std::string(reply->str, reply->len);
-			throw std::runtime_error("SPOP: unexpected reply type");
+			throw unexpected_reply_type_error("SPOP", "string or nil", reply_type_name(reply->type));
 		}
 
 		std::vector<std::string> sinter(const std::vector<std::string> &keys) override {
@@ -632,7 +730,7 @@ namespace janus {
 				}
 			}
 			else if (reply->type != REDIS_REPLY_NIL) {
-				throw std::runtime_error("SINTER: unexpected reply type");
+				throw unexpected_reply_type_error("SINTER", "array or nil", reply_type_name(reply->type));
 			}
 			return result;
 		}
@@ -645,12 +743,12 @@ namespace janus {
 			if (members.empty()) return 0;
 
 			std::vector<const char *> argv;
-			std::vector<size_t> argvlen;
+			std::vector<size_t> argv_len;
 
 			argv.push_back("ZADD");
-			argvlen.push_back(4);
+			argv_len.push_back(4);
 			argv.push_back(key.c_str());
-			argvlen.push_back(key.size());
+			argv_len.push_back(key.size());
 
 			std::vector<std::string> score_strings;
 			score_strings.reserve(members.size());
@@ -658,14 +756,14 @@ namespace janus {
 			for (const auto &member: members) {
 				score_strings.emplace_back(std::to_string(member.second));
 				argv.push_back(score_strings.back().c_str());
-				argvlen.push_back(score_strings.back().size());
+				argv_len.push_back(score_strings.back().size());
 				argv.push_back(member.first.c_str());
-				argvlen.push_back(member.first.size());
+				argv_len.push_back(member.first.size());
 			}
 
-			const auto reply = execv(argv, argvlen);
+			const auto reply = execv(argv, argv_len);
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("ZADD: unexpected reply type");
+				throw unexpected_reply_type_error("ZADD", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
 		}
@@ -688,7 +786,7 @@ namespace janus {
 
 			const auto reply = execv(argv, argv_len);
 			if (reply->type != REDIS_REPLY_INTEGER) {
-				throw std::runtime_error("ZREM: unexpected reply type");
+				throw unexpected_reply_type_error("ZREM", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
 		}
@@ -705,7 +803,7 @@ namespace janus {
 					throw std::runtime_error("ZSCORE: failed to convert score to double");
 				}
 			}
-			throw std::runtime_error("ZSCORE: unexpected reply type");
+			throw unexpected_reply_type_error("ZSCORE", "string", reply_type_name(reply->type));
 		}
 
 		std::vector<std::string> zrange(const std::string &key, long long start, long long stop) override {
@@ -722,7 +820,7 @@ namespace janus {
 				}
 			}
 			else if (reply->type != REDIS_REPLY_NIL) {
-				throw std::runtime_error("ZRANGE: unexpected reply type");
+				throw unexpected_reply_type_error("ZRANGE", "array or nil", reply_type_name(reply->type));
 			}
 			return result;
 		}
@@ -741,7 +839,7 @@ namespace janus {
 				}
 			}
 			else if (reply->type != REDIS_REPLY_NIL) {
-				throw std::runtime_error("ZREVRANGE: unexpected reply type");
+				throw unexpected_reply_type_error("ZREVRANGE", "array or nil", reply_type_name(reply->type));
 			}
 			return result;
 		}
@@ -777,7 +875,7 @@ namespace janus {
 				}
 			}
 			else if (reply->type != REDIS_REPLY_NIL) {
-				throw std::runtime_error("ZRANGE WITHSCORES: unexpected reply type");
+				throw unexpected_reply_type_error("ZRANGE WITHSCORES", "array or nil", reply_type_name(reply->type));
 			}
 			return result;
 		}
@@ -813,7 +911,7 @@ namespace janus {
 				}
 			}
 			else if (reply->type != REDIS_REPLY_NIL) {
-				throw std::runtime_error("ZREVRANGE WITHSCORES: unexpected reply type");
+				throw unexpected_reply_type_error("ZREVRANGE WITHSCORES", "array or nil", reply_type_name(reply->type));
 			}
 			return result;
 		}
@@ -832,11 +930,72 @@ namespace janus {
 					throw std::runtime_error("ZINCRBY: failed to convert returned score to double");
 				}
 			}
-			throw std::runtime_error("ZINCRBY: unexpected reply type");
+			throw unexpected_reply_type_error("ZINCRBY", "string", reply_type_name(reply->type));
 		}
 
-		cmd_result eval(const std::string &script, const std::vector<std::string> &keys,
-						const std::vector<std::string> &args) override {
+		std::string script_load(const std::string &script) override {
+			// SCRIPT LOAD <script> -> returns SHA1 digest of the script
+			std::vector<const char *> argv;
+			std::vector<size_t> argv_len;
+			argv.push_back("SCRIPT");
+			argv_len.push_back(6); // legnth of "SCRIPT"
+			argv.push_back("LOAD");
+			argv_len.push_back(4); // length of "LOAD"
+			argv.push_back(script.c_str());
+			argv_len.push_back(script.size());
+			const auto reply = execv(argv, argv_len);
+			if (reply->type == REDIS_REPLY_STRING) {
+				return {reply->str, reply->len};
+			}
+			throw unexpected_reply_type_error("SCRIPT LOAD", "string", reply_type_name(reply->type));
+		}
+
+		cmd_reply eval_sha1(const std::string &sha1, const std::vector<std::string> &keys,
+							const std::vector<std::string> &args) override {
+			std::vector<const char *> argv;
+			std::vector<size_t> argv_len;
+			// EVALSHA sha1 numkeys key [key ...] arg [arg ...]
+			argv.push_back("EVALSHA");
+			argv_len.push_back(7); // length of "EVALSHA"
+			argv.push_back(sha1.c_str());
+			argv_len.push_back(sha1.size());
+			if (keys.size() > MAX_SCRIPT_KEYS) {
+				throw too_many_script_keys_error("EVALSHA", keys.size(), MAX_SCRIPT_KEYS);
+			}
+			char num_keys_buf[NUM_KEYS_BUF_SIZE];
+			int num_keys_len = std::snprintf(num_keys_buf, sizeof(num_keys_buf), "%zu", keys.size());
+			if (num_keys_len < 0) {
+				throw std::runtime_error("snprintf format command failed");
+			}
+			argv.push_back(num_keys_buf);
+			argv_len.push_back(static_cast<size_t>(num_keys_len));
+			for (const auto &k: keys) {
+				argv.push_back(k.c_str());
+				argv_len.push_back(k.size());
+			}
+			for (const auto &a: args) {
+				argv.push_back(a.c_str());
+				argv_len.push_back(a.size());
+			}
+
+			// Use redisCommandArgv directly so we can inspect error replies (e.g. NOSCRIPT)
+			// NOLINTNEXTLINE
+			redisReply *r = static_cast<redisReply *>(
+				redisCommandArgv(context.get(), static_cast<int>(argv.size()), argv.data(), argv_len.data()));
+			if (!r) throw std::runtime_error("CommandArgv failed");
+			redis_reply_ptr reply(r);
+			if (reply->type == REDIS_REPLY_ERROR) {
+				std::string err(reply->str, reply->len);
+				if (err.find("NOSCRIPT") != std::string::npos) {
+					throw no_script_error("EVALSHA", sha1);
+				}
+				throw redis_error(err);
+			}
+			return parse_reply(reply.get());
+		}
+
+		cmd_reply eval(const std::string &script, const std::vector<std::string> &keys,
+					   const std::vector<std::string> &args) override {
 			std::vector<const char *> argv;
 			std::vector<size_t> argv_len;
 			// EVAL script numkeys key [key ...] arg [arg ...]
@@ -844,9 +1003,16 @@ namespace janus {
 			argv_len.push_back(4); // length of "EVAL"
 			argv.push_back(script.c_str());
 			argv_len.push_back(script.size()); // length of script
-			std::string num_keys = std::to_string(keys.size());
-			argv.push_back(num_keys.c_str());
-			argv_len.push_back(num_keys.size()); // length of num_keys
+			if (keys.size() > MAX_SCRIPT_KEYS) {
+				throw too_many_script_keys_error("EVALSHA", keys.size(), MAX_SCRIPT_KEYS);
+			}
+			char num_keys_buf[NUM_KEYS_BUF_SIZE];
+			int num_keys_len = std::snprintf(num_keys_buf, sizeof(num_keys_buf), "%zu", keys.size());
+			if (num_keys_len < 0) {
+				throw std::runtime_error("snprintf format command failed");
+			}
+			argv.push_back(num_keys_buf);
+			argv_len.push_back(static_cast<size_t>(num_keys_len)); // length of num_keys
 			for (const auto &k: keys) {
 				argv.push_back(k.c_str());
 				argv_len.push_back(k.size());
@@ -859,7 +1025,7 @@ namespace janus {
 			return parse_reply(reply.get());
 		}
 
-		cmd_result command(const std::string &cmd, const std::vector<std::string> &args) override {
+		cmd_reply command(const std::string &cmd, const std::vector<std::string> &args) override {
 			std::vector<const char *> argv;
 			std::vector<size_t> argv_len;
 			argv.push_back(cmd.c_str());
@@ -873,72 +1039,89 @@ namespace janus {
 		}
 
 	protected:
-		struct reply_deleter {
-			void operator()(redisReply *reply) const noexcept {
-				if (nullptr != reply) {
-					freeReplyObject(reply);
-				}
-			}
-		};
-		using reply_ptr = std::unique_ptr<redisReply, reply_deleter>;
-
-		// parse redis reply to cmd_result
+		// parse redis reply to cmd_reply
 		// NOLINTNEXTLINE
-		static cmd_result parse_reply(const redisReply *r) {
-			if (!r) return cmd_result::make_error("Null reply");
+		static cmd_reply parse_reply(const redisReply *r) {
+			if (!r) return cmd_reply::make_error("Null reply");
 			switch (r->type) {
 				case REDIS_REPLY_STRING:
-					return cmd_result::make_string(std::string(r->str, r->len));
+					return cmd_reply::make_string(std::string(r->str, r->len));
 				case REDIS_REPLY_INTEGER:
-					return cmd_result::make_integer(r->integer);
+					return cmd_reply::make_integer(r->integer);
 				case REDIS_REPLY_ARRAY: {
-					std::vector<cmd_result> elements;
+					std::vector<cmd_reply> elements;
 					elements.reserve(r->elements);
 					for (size_t i = 0; i < r->elements; ++i) {
 						elements.push_back(parse_reply(r->element[i]));
 					}
-					return cmd_result::make_array(std::move(elements));
+					return cmd_reply::make_array(std::move(elements));
 				}
 				case REDIS_REPLY_NIL:
-					return cmd_result::make_nil();
+					return cmd_reply::make_nil();
 				case REDIS_REPLY_STATUS:
-					return cmd_result::make_status(std::string(r->str, r->len));
+					return cmd_reply::make_status(std::string(r->str, r->len));
 				case REDIS_REPLY_ERROR:
-					return cmd_result::make_error(std::string(r->str, r->len));
+					return cmd_reply::make_error(std::string(r->str, r->len));
 				default:
-					return cmd_result::make_error("Unknown reply type");
+					return cmd_reply::make_error("Unknown reply type");
 			}
 		}
 
-		reply_ptr exec(const char *fmt, ...) const {
+		// Map janus::reply_type enum to human-readable name
+		static const char *reply_type_name(reply_type t) {
+			return reply_type_name(static_cast<unsigned int>(t));
+		}
+
+		// Accept raw int (hiredis) reply type as well
+		static const char *reply_type_name(unsigned int type) {
+			switch (type) {
+				case REDIS_REPLY_STRING:
+					return "string";
+				case REDIS_REPLY_INTEGER:
+					return "integer";
+				case REDIS_REPLY_ARRAY:
+					return "array";
+				case REDIS_REPLY_NIL:
+					return "nil";
+				case REDIS_REPLY_STATUS:
+					return "status";
+				case REDIS_REPLY_ERROR:
+					return "error";
+				default:
+					return "unknown";
+			}
+		}
+
+		redis_reply_ptr exec(const char *fmt, ...) const {
 			va_list ap;
 			va_start(ap, fmt);
 			// NOLINTNEXTLINE
-			redisReply *r = static_cast<redisReply *>(redisvCommand(context, fmt, ap));
+			redisReply *r = static_cast<redisReply *>(redisvCommand(context.get(), fmt, ap));
 			va_end(ap);
 			if (!r) throw std::runtime_error("Command failed");
 			if (r->type == REDIS_REPLY_ERROR) {
 				std::string err(r->str, r->len);
 				freeReplyObject(r);
-				throw std::runtime_error("Redis error: " + err);
+				throw redis_error(err);
 			}
-			return reply_ptr(r);
+			return redis_reply_ptr(r);
 		}
 
-		[[nodiscard]] reply_ptr execv(const std::vector<const char *> &argv, const std::vector<size_t> &argvlen) const {
+		[[nodiscard]] redis_reply_ptr execv(const std::vector<const char *> &argv,
+											const std::vector<size_t> &argv_len) const {
 			// NOLINTNEXTLINE
 			redisReply *r = static_cast<redisReply *>(redisCommandArgv(
-				context, static_cast<int>(argv.size()), const_cast<const char **>(argv.data()), argvlen.data()));
+				context.get(), static_cast<int>(argv.size()), const_cast<const char **>(argv.data()), argv_len.data()));
 			if (!r) throw std::runtime_error("CommandArgv failed");
 			if (r->type == REDIS_REPLY_ERROR) {
 				std::string err(r->str, r->len);
 				freeReplyObject(r);
-				throw std::runtime_error("Redis error: " + err);
+				throw redis_error(err);
 			}
-			return reply_ptr(r);
+			return redis_reply_ptr(r);
 		}
 
 	private:
-		redisContext *context;
+		redis_context_ptr context;
 	};
 }

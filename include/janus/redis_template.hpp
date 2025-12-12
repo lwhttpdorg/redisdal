@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 #include "common.hpp"
 #include "redis_operations.hpp"
@@ -38,9 +39,14 @@ namespace janus {
 		/* Get the data type of the value stored at key */
 		virtual std::string type(const K &key) = 0;
 		/* Evaluate lua script */
-		virtual cmd_result eval(const std::string &script, const std::vector<K> &keys, const std::vector<V> &args) = 0;
+		virtual cmd_reply eval(const std::string &script, const std::vector<K> &keys, const std::vector<V> &args) = 0;
+		/* Load script into script cache and return SHA1 */
+		virtual std::string script_load(const std::string &script) = 0;
+		/* Evaluate by SHA1 (EVALSHA) */
+		virtual cmd_reply eval_sha1(const std::string &sha1, const std::vector<K> &keys,
+									const std::vector<V> &args) = 0;
 		/* Execute a raw Redis command */
-		virtual cmd_result exec_cmd(const std::string &cmd, const std::vector<std::string> &args) = 0;
+		virtual cmd_reply exec_cmd(const std::string &cmd, const std::vector<std::string> &args) = 0;
 		/* String operations view */
 		virtual value_operations<K, V> &ops_for_value() = 0;
 		/* Hash operations view */
@@ -58,16 +64,13 @@ namespace janus {
 	public:
 		/**
 		 * @brief Constructor: Injects all necessary dependencies.
-		 * * @param conn Shared pointer to the low-level connection handler.
+		 * @param conn Redis connection.
 		 * @param k_serializer Serializer for the key type K.
 		 * @param v_serializer Serializer for the value type V.
 		 */
-		redis_template(const std::shared_ptr<kv_connection> &conn, const std::shared_ptr<serializer<K>> k_serializer,
-					   const std::shared_ptr<serializer<V>> v_serializer) :
+		redis_template(kv_connection &conn, serializer<K> &k_serializer, serializer<V> &v_serializer) :
 			connection(conn), key_serializer(k_serializer), value_serializer(v_serializer) {
-			if (conn == nullptr || k_serializer == nullptr || v_serializer == nullptr) {
-				throw std::invalid_argument("redis_template: connection or serializer is null");
-			}
+			// references cannot be null, no runtime null check needed
 
 			value_ops = std::make_unique<default_value_operations<K, V>>(*this);
 			hash_ops = std::make_unique<default_hash_operations<K, V>>(*this);
@@ -78,19 +81,19 @@ namespace janus {
 
 		bool exists(const K &key) override {
 			auto serialized_key = this->serialize_key(key);
-			return connection->exists(serialized_key);
+			return connection.exists(serialized_key);
 		}
 
 		void keys(const std::string &pattern, std::unordered_set<K> &keys) override {
 			std::unordered_set<std::string> s_keys;
-			connection->keys(pattern, s_keys);
+			connection.keys(pattern, s_keys);
 			for (const auto &s_key: s_keys) {
 				keys.insert(this->deserialize_key(s_key));
 			}
 		}
 
 		scan_result<K> scan(uint64_t cursor, const std::string &pattern, unsigned int count) override {
-			auto s_result = connection->scan(cursor, pattern, count);
+			auto s_result = connection.scan(cursor, pattern, count);
 			scan_result<K> result;
 			result.cursor = s_result.cursor;
 			for (const auto &s_key: s_result.keys) {
@@ -101,22 +104,22 @@ namespace janus {
 
 		std::string type(const K &key) override {
 			auto serialized_key = this->serialize_key(key);
-			return connection->type(serialized_key);
+			return connection.type(serialized_key);
 		}
 
 		bool expire(const K &key, long long seconds) override {
 			auto serialized_key = this->serialize_key(key);
-			return connection->expire(serialized_key, seconds);
+			return connection.expire(serialized_key, seconds);
 		}
 
 		bool pexpire(const K &key, int milliseconds) override {
 			auto serialized_key = this->serialize_key(key);
-			return connection->pexpire(serialized_key, milliseconds);
+			return connection.pexpire(serialized_key, milliseconds);
 		}
 
 		long long del(const K &key) override {
 			auto serialized_key = this->serialize_key(key);
-			return connection->del(serialized_key);
+			return connection.del(serialized_key);
 		}
 
 		long long del(const std::vector<K> &keys) override {
@@ -126,20 +129,20 @@ namespace janus {
 			for (const auto &key: keys) {
 				s_keys.push_back(this->serialize_key(key));
 			}
-			return connection->del(s_keys);
+			return connection.del(s_keys);
 		}
 
 		int64_t ttl(const K &key) override {
 			auto serialized_key = this->serialize_key(key);
-			return connection->ttl(serialized_key);
+			return connection.ttl(serialized_key);
 		}
 
 		int64_t pttl(const K &key) override {
 			auto serialized_key = this->serialize_key(key);
-			return connection->pttl(serialized_key);
+			return connection.pttl(serialized_key);
 		}
 
-		cmd_result eval(const std::string &script, const std::vector<K> &keys, const std::vector<V> &args) override {
+		cmd_reply eval(const std::string &script, const std::vector<K> &keys, const std::vector<V> &args) override {
 			std::vector<std::string> s_keys;
 			for (const auto &key: keys) {
 				s_keys.push_back(this->serialize_key(key));
@@ -148,11 +151,46 @@ namespace janus {
 			for (const auto &arg: args) {
 				s_args.push_back(this->serialize_value(arg));
 			}
-			return connection->eval(script, s_keys, s_args);
+			return connection.eval(script, s_keys, s_args);
 		}
 
-		cmd_result exec_cmd(const std::string &cmd, const std::vector<std::string> &args) override {
-			return connection->command(cmd, args);
+		std::string script_load(const std::string &script) override {
+			std::string sha = connection.script_load(script);
+			// cache mapping from sha -> script so we can reload on NOSCRIPT
+			sha1_cache.emplace(sha, script);
+			return sha;
+		}
+
+		cmd_reply eval_sha1(const std::string &sha1, const std::vector<K> &keys, const std::vector<V> &args) override {
+			std::vector<std::string> s_keys;
+			s_keys.reserve(keys.size());
+			for (const auto &key: keys) {
+				s_keys.push_back(this->serialize_key(key));
+			}
+			std::vector<std::string> s_args;
+			s_args.reserve(args.size());
+			for (const auto &arg: args) {
+				s_args.push_back(this->serialize_value(arg));
+			}
+			try {
+				return connection.eval_sha1(sha1, s_keys, s_args);
+			}
+			catch (const no_script_error &) {
+				// If we have the original script cached for this sha, reload and retry
+				auto it = sha1_cache.find(sha1);
+				if (it == sha1_cache.end()) {
+					throw; // unknown script, propagate
+				}
+				const std::string &script = it->second;
+				std::string new_sha = connection.script_load(script);
+				// update cache (in case sha changed)
+				sha1_cache.emplace(new_sha, script);
+				return connection.eval_sha1(new_sha, s_keys, s_args);
+			}
+		}
+
+		cmd_reply exec_cmd(const std::string &cmd, const std::vector<std::string> &args) override {
+			return connection.command(cmd, args);
 		}
 
 		// ==========================================================
@@ -180,30 +218,30 @@ namespace janus {
 		}
 
 		[[nodiscard]] std::string serialize_key(const K &key) const {
-			return key_serializer->serialize(key);
+			return key_serializer.serialize(key);
 		}
 
 		[[nodiscard]] K deserialize_key(const std::string &data) const {
-			return key_serializer->deserialize(data);
+			return key_serializer.deserialize(data);
 		}
 
 		[[nodiscard]] std::string serialize_value(const V &value) const {
-			return value_serializer->serialize(value);
+			return value_serializer.serialize(value);
 		}
 
 		[[nodiscard]] V deserialize_value(const std::string &data) const {
-			return value_serializer->deserialize(data);
+			return value_serializer.deserialize(data);
 		}
 
 		[[nodiscard]] kv_connection &get_connection() const {
-			return *connection;
+			return connection;
 		}
 
 	private:
 		// --- Dependencies (Shared ownership) ---
-		std::shared_ptr<kv_connection> connection;
-		std::shared_ptr<serializer<K>> key_serializer;
-		std::shared_ptr<serializer<V>> value_serializer;
+		kv_connection &connection;
+		serializer<K> &key_serializer;
+		serializer<V> &value_serializer;
 
 		// --- Operation Views Instances (Unique ownership) ---
 		std::unique_ptr<value_operations<K, V>> value_ops;
@@ -211,5 +249,8 @@ namespace janus {
 		std::unique_ptr<list_operations<K, V>> list_ops;
 		std::unique_ptr<set_operations<K, V>> set_ops;
 		std::unique_ptr<zset_operations<K, V>> zset_ops;
+
+		// cache mapping from sha1 -> script body for automatic reload on NOSCRIPT
+		std::unordered_map<std::string, std::string> sha1_cache;
 	};
 }

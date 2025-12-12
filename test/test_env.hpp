@@ -2,12 +2,6 @@
 
 #include <string>
 
-#define DEFAULT_REDIS_HOST "127.0.0.1"
-#define DEFAULT_REDIS_PORT 6379
+constexpr const char *DEFAULT_REDIS_HOST = "tcp://127.0.0.1:6379";
 
-struct redis_connection_params {
-	std::string host;
-	unsigned short port;
-};
-
-redis_connection_params get_redis_connection_params();
+std::string get_redis_connection_url();

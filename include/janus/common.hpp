@@ -12,67 +12,67 @@ namespace janus {
 		std::unordered_set<K> keys;
 	};
 
+	enum class reply_type { STRING, ARRAY, INTEGER, NIL, STATUS, ERROR, DOUBLE, BOOL };
+
 	/**
-	 * @class cmd_result
-	 * @brief A class to encapsulate the result of a command execution.
+	 * @class cmd_reply
+	 * @brief A class to encapsulate the reply of a command execution.
 	 */
-	class cmd_result {
+	class cmd_reply {
 	public:
-		enum class result_type { STRING, ARRAY, INTEGER, NIL, STATUS, ERROR, DOUBLE, BOOL };
-
-		cmd_result() : type(result_type::NIL) {
+		cmd_reply() : type(reply_type::NIL) {
 		}
-		explicit cmd_result(const std::string &value) : type(result_type::STRING), str_value(value) {
+		explicit cmd_reply(const std::string &value) : type(reply_type::STRING), str_value(value) {
 		}
-		explicit cmd_result(const char *value) : type(result_type::STRING), str_value(value) {
+		explicit cmd_reply(const char *value) : type(reply_type::STRING), str_value(value) {
 		}
-		explicit cmd_result(uint64_t value) : type(result_type::INTEGER), int_value(value) {
+		explicit cmd_reply(uint64_t value) : type(reply_type::INTEGER), int_value(value) {
 		}
-		explicit cmd_result(double value) : type(result_type::DOUBLE), double_value(value) {
+		explicit cmd_reply(double value) : type(reply_type::DOUBLE), double_value(value) {
 		}
-		explicit cmd_result(bool value) : type(result_type::BOOL), bool_value(value) {
+		explicit cmd_reply(bool value) : type(reply_type::BOOL), bool_value(value) {
 		}
-		explicit cmd_result(const std::vector<cmd_result> &value) : type(result_type::ARRAY), array_value(value) {
+		explicit cmd_reply(const std::vector<cmd_reply> &value) : type(reply_type::ARRAY), array_value(value) {
 		}
-		explicit cmd_result(std::vector<cmd_result> &&value) : type(result_type::ARRAY), array_value(std::move(value)) {
+		explicit cmd_reply(std::vector<cmd_reply> &&value) : type(reply_type::ARRAY), array_value(std::move(value)) {
 		}
 
-		static cmd_result make_nil() {
+		static cmd_reply make_nil() {
 			return {};
 		}
 
-		static cmd_result make_error(const std::string &message) {
-			cmd_result r;
-			r.type = result_type::ERROR;
+		static cmd_reply make_error(const std::string &message) {
+			cmd_reply r;
+			r.type = reply_type::ERROR;
 			r.str_value = message;
 			return r;
 		}
-		static cmd_result make_string(const std::string &value) {
-			return cmd_result(value);
+		static cmd_reply make_string(const std::string &value) {
+			return cmd_reply(value);
 		}
-		static cmd_result make_integer(uint64_t value) {
-			return cmd_result(value);
+		static cmd_reply make_integer(uint64_t value) {
+			return cmd_reply(value);
 		}
-		static cmd_result make_double(double value) {
-			return cmd_result(value);
+		static cmd_reply make_double(double value) {
+			return cmd_reply(value);
 		}
-		static cmd_result make_bool(bool value) {
-			return cmd_result(value);
+		static cmd_reply make_bool(bool value) {
+			return cmd_reply(value);
 		}
-		static cmd_result make_array(const std::vector<cmd_result> &value) {
-			return cmd_result(value);
+		static cmd_reply make_array(const std::vector<cmd_reply> &value) {
+			return cmd_reply(value);
 		}
-		static cmd_result make_array(std::vector<cmd_result> &&value) {
-			return cmd_result(std::move(value));
+		static cmd_reply make_array(std::vector<cmd_reply> &&value) {
+			return cmd_reply(std::move(value));
 		}
-		static cmd_result make_status(const std::string &value) {
-			cmd_result r;
-			r.type = result_type::STATUS;
+		static cmd_reply make_status(const std::string &value) {
+			cmd_reply r;
+			r.type = reply_type::STATUS;
 			r.str_value = value;
 			return r;
 		}
 
-		[[nodiscard]] result_type get_type() const {
+		[[nodiscard]] reply_type get_type() const {
 			return type;
 		}
 
@@ -88,20 +88,20 @@ namespace janus {
 		[[nodiscard]] const std::optional<bool> &get_bool() const {
 			return bool_value;
 		}
-		[[nodiscard]] const std::optional<std::vector<cmd_result>> &get_array() const {
+		[[nodiscard]] const std::optional<std::vector<cmd_reply>> &get_array() const {
 			return array_value;
 		}
 
 		[[nodiscard]] bool is_nil() const {
-			return type == result_type::NIL;
+			return type == reply_type::NIL;
 		}
 
 		[[nodiscard]] bool is_error() const {
-			return type == result_type::ERROR;
+			return type == reply_type::ERROR;
 		}
 
 	private:
-		result_type type;
+		reply_type type;
 
 		std::optional<std::string> str_value;
 
@@ -111,6 +111,6 @@ namespace janus {
 
 		std::optional<bool> bool_value;
 
-		std::optional<std::vector<cmd_result>> array_value;
+		std::optional<std::vector<cmd_reply>> array_value;
 	};
 }

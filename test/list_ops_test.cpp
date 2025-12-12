@@ -18,28 +18,24 @@ protected:
 
 	const key_type test_key = "test_list_key";
 
-	// Connection parameters
-	std::string redis_host;
-	unsigned short redis_port{DEFAULT_REDIS_PORT};
-
-	std::shared_ptr<janus::kv_connection> conn;
+	std::shared_ptr<janus::kv_connection> connection;
 	std::shared_ptr<janus::serializer<key_type>> k_serializer;
 	std::shared_ptr<janus::serializer<value_type>> v_serializer;
 	std::unique_ptr<janus::redis_template<key_type, value_type>> tpl;
 
 	void SetUp() override {
 		// 1. Retrieve connection parameters from environment variables
-		auto [redis_host, redis_port] = get_redis_connection_params();
+		std::string redis_url = get_redis_connection_url();
 
 		// 2. Create underlying connection
-		conn = std::make_shared<janus::redis_connection>(redis_host, redis_port);
+		connection = std::make_shared<janus::redis_connection>(redis_url);
 
 		// 3. Create Serializers
 		k_serializer = std::make_shared<janus::string_serializer<key_type>>();
 		v_serializer = std::make_shared<janus::string_serializer<value_type>>();
 
 		// 4. Construct redis_template
-		tpl = std::make_unique<janus::redis_template<key_type, value_type>>(conn, k_serializer, v_serializer);
+		tpl = std::make_unique<janus::redis_template<key_type, value_type>>(*connection, *k_serializer, *v_serializer);
 
 		// 5. Clean up test key
 		clear_test_keys();
