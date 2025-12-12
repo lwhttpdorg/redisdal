@@ -46,6 +46,5 @@ jobs:
 
       - name: Test
         env:
-          REDIS_HOST: 127.0.0.1
-          REDIS_PORT: 6379
+          REDIS_HOST: tcp://127.0.0.1:6379
         run: ctest --build-config ${{ matrix.build_type }} --test-dir build --output-on-failure
