@@ -23,8 +23,8 @@ protected:
 	std::unique_ptr<janus::redis_connection> conn;
 	std::unique_ptr<janus::redis_template<key_type, member_type>> tpl;
 	std::set<key_type> keys_to_clean;
-	janus::string_serializer<key_type> key_serializer;
-	janus::string_serializer<member_type> value_serializer;
+	janus::string_serializer<key_type> key_serializer{};
+	janus::string_serializer<member_type> value_serializer{};
 
 	ZSetOpsTest() {
 		std::string redis_url = get_redis_connection_url();
@@ -107,9 +107,4 @@ TEST_F(ZSetOpsTest, ZrangeWithscores) {
 	ASSERT_EQ(pairs_desc.size(), 2);
 	EXPECT_EQ(pairs_desc[0].first, "bob");
 	EXPECT_DOUBLE_EQ(pairs_desc[1].second, 30.0);
-}
-
-int main(int argc, char **argv) {
-	testing::InitGoogleTest(&argc, argv);
-	return RUN_ALL_TESTS();
 }

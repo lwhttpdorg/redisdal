@@ -21,8 +21,8 @@ protected:
 	std::unique_ptr<janus::redis_connection> conn;
 	std::unique_ptr<janus::redis_template<key_type, value_type>> tpl;
 	std::set<key_type> keys_to_clean;
-	janus::string_serializer<key_type> key_serializer;
-	janus::string_serializer<value_type> value_serializer;
+	janus::string_serializer<key_type> key_serializer{};
+	janus::string_serializer<value_type> value_serializer{};
 
 	SetOpsTest() {
 		std::string redis_url = get_redis_connection_url();
@@ -101,9 +101,4 @@ TEST_F(SetOpsTest, Spop) {
 
 	EXPECT_FALSE(tpl->ops_for_set().spop(test_key));
 	EXPECT_EQ(tpl->ops_for_set().scard(test_key), 0);
-}
-
-int main(int argc, char **argv) {
-	testing::InitGoogleTest(&argc, argv);
-	return RUN_ALL_TESTS();
 }

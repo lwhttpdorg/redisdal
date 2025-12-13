@@ -1,10 +1,13 @@
 #include <iostream>
+#include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
-#include <janus/janus.hpp>
+#include "janus/janus.hpp"
+#include "test_env.hpp"
 
-// Define your custom object
+// Define a custom object for hash mapping demonstration
 struct User {
 	long long id{};
 	std::string username;
@@ -28,21 +31,18 @@ public:
 };
 
 int main() {
-	// 1. Create the underlying connection using a URL
-	auto conn = std::make_shared<janus::redis_connection>("tcp://127.0.0.1:6379");
+	// 1. Create the underlying connection using a URL from the environment
+	std::string redis_url = get_redis_connection_url();
+	auto conn = std::make_shared<janus::redis_connection>(redis_url);
 
 	// 2. Create serializers for different data types
 	auto string_serializer = std::make_shared<janus::string_serializer<std::string>>();
 	auto int_serializer = std::make_shared<janus::string_serializer<long long>>();
 
 	// Create a template for string keys and string values
-	janus::redis_template string_tpl(*conn, *string_serializer, *string_serializer);
+	janus::redis_template<std::string, std::string> string_tpl(*conn, *string_serializer, *string_serializer);
 	// Create a template for string keys and integer values
-	janus::redis_template int_tpl(*conn, *string_serializer, *int_serializer);
-
-	// 3. Clean up keys from previous runs
-	string_tpl.del({"my_string", "my_hash", "my_list", "my_set", "my_zset", "my_counter", "user:101"});
-	std::cout << "Cleaned up old keys." << std::endl;
+	janus::redis_template<std::string, long long> int_tpl(*conn, *string_serializer, *int_serializer);
 
 	// === String Operations ===
 	std::cout << "\n--- String Operations ---" << std::endl;
@@ -153,6 +153,12 @@ int main() {
 	// Check the data type of the key
 	std::cout << "TYPE: The data type of key '" << generic_key << "' is " << string_tpl.type(generic_key) << "."
 			  << std::endl;
+
+	// === Final Cleanup ===
+	std::cout << "\n--- Cleaning up all keys ---" << std::endl;
+	long long deleted_count = string_tpl.del(
+		{"my_string", "my_counter", "my_hash", "user:101", "my_list", "my_set", "my_zset", "my_generic_key"});
+	std::cout << "Deleted " << deleted_count << " keys." << std::endl;
 
 	return 0;
 }

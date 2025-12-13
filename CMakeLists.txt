@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.11)
+cmake_minimum_required(VERSION 3.10)
 
 project(janus)
 
@@ -38,19 +38,19 @@ find_package(hiredis QUIET)
 if (NOT TARGET hiredis::hiredis)
     find_path(HIREDIS_INCLUDE_DIR hiredis/hiredis.h)
     find_library(HIREDIS_LIB hiredis)
- 
+
     if (NOT HIREDIS_INCLUDE_DIR OR NOT HIREDIS_LIB)
         message(FATAL_ERROR "hiredis not found")
     endif ()
- 
+
     add_library(hiredis INTERFACE IMPORTED GLOBAL)
     target_include_directories(hiredis INTERFACE ${HIREDIS_INCLUDE_DIR})
     target_link_libraries(hiredis INTERFACE ${HIREDIS_LIB})
- 
+
     add_library(hiredis::hiredis ALIAS hiredis)
 endif ()
 
-target_link_libraries(${TARGET_NAME} PRIVATE hiredis::hiredis)
+target_link_libraries(${TARGET_NAME} PUBLIC hiredis::hiredis)
 
 # --- Installation Rules ---
 # install headers

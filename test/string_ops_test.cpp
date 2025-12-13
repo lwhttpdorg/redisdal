@@ -19,8 +19,8 @@ protected:
 	std::unique_ptr<janus::redis_connection> conn;
 	std::unique_ptr<janus::redis_template<key_type, value_type>> tpl;
 	std::set<key_type> keys_to_clean;
-	janus::string_serializer<key_type> key_serializer;
-	janus::string_serializer<value_type> value_serializer;
+	janus::string_serializer<key_type> key_serializer{};
+	janus::string_serializer<value_type> value_serializer{};
 
 	StringOpsTest() {
 		std::string redis_url = get_redis_connection_url();
@@ -99,9 +99,4 @@ TEST_F(StringOpsTest, Append) {
 	if (std::optional<value_type> appended_val = tpl->ops_for_value().get(test_key)) {
 		EXPECT_EQ(*appended_val, 1020U) << "Appended value did not deserialize as expected.";
 	}
-}
-
-int main(int argc, char **argv) {
-	testing::InitGoogleTest(&argc, argv);
-	return RUN_ALL_TESTS();
 }

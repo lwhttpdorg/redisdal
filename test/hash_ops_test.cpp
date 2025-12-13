@@ -24,8 +24,8 @@ protected:
 	std::unique_ptr<janus::redis_connection> conn;
 	std::unique_ptr<janus::redis_template<key_type, value_type>> tpl;
 	std::set<key_type> keys_to_clean;
-	janus::string_serializer<key_type> key_serializer;
-	janus::string_serializer<value_type> value_serializer;
+	janus::string_serializer<key_type> key_serializer{};
+	janus::string_serializer<value_type> value_serializer{};
 
 	HashOpsTest() {
 		std::string redis_url = get_redis_connection_url();
@@ -157,9 +157,4 @@ TEST_F(HashOpsTest, Hscan) {
 	for (const auto &p: fields) {
 		EXPECT_TRUE(found.count(p.first)) << "Field missing from hscan result: " << p.first;
 	}
-}
-
-int main(int argc, char **argv) {
-	testing::InitGoogleTest(&argc, argv);
-	return RUN_ALL_TESTS();
 }
