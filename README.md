@@ -143,7 +143,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
-FetchContent_Declare(janus GIT_REPOSITORY https://github.com/lwhttpdorg/janus.git GIT_TAG 2201db14eb2c1df39d71f1e2b8670e57b3303870)
+FetchContent_Declare(janus GIT_REPOSITORY https://github.com/lwhttpdorg/janus.git GIT_TAG v1.2)
 FetchContent_MakeAvailable(janus)
 
 # Add your application executable
