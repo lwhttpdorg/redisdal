@@ -1,24 +1,17 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(janus)
-
-set(TARGET_NAME ${CMAKE_PROJECT_NAME})
+project(janus VERSION 1.17.0)
 
 if (CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
     message(FATAL_ERROR "In-source builds not allowed. Please create a separate build directory.")
 endif ()
 
-# Set output directories for build artifacts to keep the build folder clean.
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib) # For static libraries (.a)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib) # For shared libraries (.so)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin) # For executables
-
-add_library(${TARGET_NAME} SHARED src/redis_connection.cpp)
-target_include_directories(${TARGET_NAME}
+add_library(janus SHARED src/redis_connection.cpp)
+target_include_directories(janus
     PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
-target_compile_features(${TARGET_NAME} PUBLIC cxx_std_17)
+target_compile_features(janus PUBLIC cxx_std_17)
 
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "The default is the Release version" FORCE)
@@ -50,7 +43,7 @@ if (NOT TARGET hiredis::hiredis)
     add_library(hiredis::hiredis ALIAS hiredis)
 endif ()
 
-target_link_libraries(${TARGET_NAME} PUBLIC hiredis::hiredis)
+target_link_libraries(janus PUBLIC hiredis::hiredis)
 
 # --- Installation Rules ---
 # install headers
