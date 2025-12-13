@@ -1,5 +1,23 @@
 # 📚 Janus: C++ Redis Template Interface
 
+<!-- TOC -->
+* [📚 Janus: C++ Redis Template Interface](#-janus-c-redis-template-interface)
+  * [1. 🛠️ Prerequisites](#1--prerequisites)
+  * [2. ⚙️ Building the Library](#2--building-the-library)
+    * [2.1. Step 1: Clone the Repository](#21-step-1-clone-the-repository)
+    * [2.2. Step 2: Configure CMake](#22-step-2-configure-cmake)
+    * [2.3. Step 3: Compile](#23-step-3-compile)
+  * [3. ✅ Running Tests](#3--running-tests)
+    * [3.1. Enabling Tests](#31-enabling-tests)
+    * [3.2. Executing Tests with CTest](#32-executing-tests-with-ctest)
+  * [4. 🚀 Usage in Your Project](#4--usage-in-your-project)
+    * [4.1. Integration (Your `CMakeLists.txt`)](#41-integration-your-cmakeliststxt)
+    * [4.2. High-Level Operations](#42-high-level-operations)
+    * [4.3. Working with Custom Types for Hashes](#43-working-with-custom-types-for-hashes)
+    * [4.4. Comprehensive Example](#44-comprehensive-example)
+  * [5. 📜 License](#5--license)
+<!-- TOC -->
+
 Janus is a lightweight, modern C++ library designed to provide a high-level, template-based interface for interacting
 with the Redis key-value store. It abstracts away the low-level details of connection handling and data serialization,
 allowing developers to focus on application logic using native C++ types (`K` and `V`) for keys and values.
@@ -7,7 +25,7 @@ allowing developers to focus on application logic using native C++ types (`K` an
 Janus is implemented as an Interface Library, meaning it primarily provides headers and API definitions for other
 projects to link against.
 
-## 🛠️ Prerequisites
+## 1. 🛠️ Prerequisites
 
 To build and use Janus successfully, you must meet the following requirements:
 
@@ -16,18 +34,18 @@ To build and use Janus successfully, you must meet the following requirements:
 3. **hiredis**: The underlying C client library for Redis.
 4. **Redis Server**: A running Redis instance is required for integration testing.
 
-## ⚙️ Building the Library
+## 2. ⚙️ Building the Library
 
 Janus uses CMake for its build process. Please follow the standard out-of-source build steps.
 
-### Step 1: Clone the Repository
+### 2.1. Step 1: Clone the Repository
 
 ```shell
 git clone https://github.com/lwhttpdorg/janus.git
 cd janus
 ```
 
-### Step 2: Configure CMake
+### 2.2. Step 2: Configure CMake
 
 Create a separate build directory and execute CMake from within it.
 
@@ -58,7 +76,7 @@ configuration to specify the installation paths for `hiredis` and other required
 cmake -DCMAKE_PREFIX_PATH="<Path/To/hiredis/install>;<Path/To/Other/Deps>"
 ```
 
-### Step 3: Compile
+### 2.3. Step 3: Compile
 
 Compile the project using your chosen build tool:
 
@@ -66,11 +84,11 @@ Compile the project using your chosen build tool:
 cmake --build build --config=Debug -j $(nproc)
 ```
 
-## ✅ Running Tests
+## 3. ✅ Running Tests
 
 Tests are optional and require a running Redis instance. They are enabled by the CMake option `ENABLE_JANUS_TEST`.
 
-### 1. Enabling Tests
+### 3.1. Enabling Tests
 
 To include the tests in your build, enable the option during CMake configuration:
 
@@ -78,7 +96,7 @@ To include the tests in your build, enable the option during CMake configuration
 cmake -S . -B build -DENABLE_JANUS_TEST=ON
 ```
 
-### 2. Executing Tests with CTest
+### 3.2. Executing Tests with CTest
 
 The tests are configured to read the Redis connection parameters from command-line environment variables. This allows
 for flexible testing against various Redis instances. The default connection is `127.0.0.1:6379`.
@@ -104,37 +122,49 @@ Windows (PowerShell):
 $env:REDIS_HOST="tcp://172.17.57.112:6379"; ctest --test-dir build --verbose
 ```
 
-## 🚀 Usage in Your Project
+## 4. 🚀 Usage in Your Project
 
 Janus is an `INTERFACE` library. You integrate it into your own CMake project by linking your targets against the
 `janus` target.
 
-### 1. Integration (Your `CMakeLists.txt`)
+### 4.1. Integration (Your `CMakeLists.txt`)
 
-In your project's `CMakeLists.txt`:
+To use Janus in your project, you need to find it with `find_package` and then link your target against the `janus`
+interface library using `target_link_libraries`.
+
+Here is a complete example of a `CMakeLists.txt` file:
 
 ```cmake
-# Assume Janus is located in a known directory, or installed on the system
+cmake_minimum_required(VERSION 3.11)
+project(MyApp)
+
+# Set the C++ standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Find the Janus package.
+# If Janus is installed in a custom location, you may need to set CMAKE_PREFIX_PATH.
+# cmake -S . -B build -DCMAKE_PREFIX_PATH="/path/to/janus/install"
 find_package(Janus REQUIRED)
 
+# Add your application executable
 add_executable(my_app src/main.cpp)
 
-# Link your application against the Janus interface library
+# Link your application to the Janus interface library.
+# This will automatically handle include directories and other dependencies like hiredis.
 target_link_libraries(my_app PRIVATE janus)
 ```
 
 By linking to `janus`, your project automatically inherits:
 
-- The necessary include directories (`target_include_directories`).
-- The required C++ standard (C++17).
-- The underlying dependency (`hiredis::hiredis`).
+- The necessary include directories (`target_include_directories`)
 
-### 2. High-Level OperationsJanus provides
+### 4.2. High-Level Operations
 
-the template layer (`redis_template`) and specialized operation classes (e.g., `list_operations`) that manage
+Janus provides the template layer (`redis_template`) and specialized operation classes (e.g., `list_operations`) that manage
 serialization and connection handling, enabling clean, type-safe Redis interactions:
 
-### 3. Working with Custom Types for Hashes
+### 4.3. Working with Custom Types for Hashes
 
 A powerful feature of Janus is its ability to map custom C++ objects to Redis Hashes. Here’s how you can define a `User`
 object and a mapper to automatically handle its serialization.
@@ -166,12 +196,9 @@ public:
 
 Now you can use this mapper with `redis_template` to work with `User` objects directly.
 
-### 4. Comprehensive Example
+### 4.4. Comprehensive Example
 
 The following example demonstrates operations for all major data types, including the custom `User` hash.
-
-the template layer (`redis_template`) and specialized operation classes (e.g., `list_operations`) that manage
-serialization and connection handling, enabling clean, type-safe Redis interactions:
 
 ```c++
 #include <iostream>
@@ -314,6 +341,6 @@ int main() {
 }
 ```
 
-## 📜 License
+## 5. 📜 License
 
 This project uses the [Apache License 2.0](LICENSE) license
