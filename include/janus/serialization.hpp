@@ -28,11 +28,28 @@ namespace janus {
 	public:
 		// Use std::to_string for serialization
 		static std::string to_string(const T &t) {
+			if constexpr (std::is_same_v<T, bool>) {
+				return t ? "true" : "false";
+			}
 			return std::to_string(t);
 		}
 
 		// Use standard library functions for deserialization
 		static T from_string(const std::string &s) {
+			if constexpr (std::is_same_v<T, bool>) {
+				std::string lower_s;
+				lower_s.resize(s.size());
+				std::transform(s.begin(), s.end(), lower_s.begin(), [](unsigned char c) { return std::tolower(c); });
+
+				if (lower_s == "true" || lower_s == "1") {
+					return true;
+				}
+				if (lower_s == "false" || lower_s == "0") {
+					return false;
+				}
+				throw std::invalid_argument(
+					"Invalid string format for boolean type. Expected 'true', 'false', '1', or '0'.");
+			}
 			if constexpr (std::is_integral_v<T>) {
 				if constexpr (std::is_signed_v<T>) {
 					if constexpr (sizeof(T) <= sizeof(int))
@@ -56,20 +73,6 @@ namespace janus {
 					return std::stod(s);
 				else if constexpr (std::is_same_v<T, long double>)
 					return std::stold(s);
-			}
-			else if constexpr (std::is_same_v<T, bool>) {
-				std::string lower_s;
-				lower_s.resize(s.size());
-				std::transform(s.begin(), s.end(), lower_s.begin(), tolower);
-
-				if (lower_s == "true" || lower_s == "1") {
-					return true;
-				}
-				if (lower_s == "false" || lower_s == "0") {
-					return false;
-				}
-				throw std::invalid_argument(
-					"Invalid string format for boolean type. Expected 'true', 'false', '1', or '0'.");
 			}
 			throw std::invalid_argument("Unsupported arithmetic type for from_string");
 		}
