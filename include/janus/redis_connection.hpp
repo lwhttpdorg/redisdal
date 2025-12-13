@@ -18,6 +18,9 @@ namespace janus {
 	// excessively large argv arrays and potential misuse. Adjust as needed.
 	static constexpr size_t MAX_SCRIPT_KEYS = 64;
 
+	/**
+	 * @brief Defines the connection scheme for a Redis URL.
+	 */
 	enum class redis_scheme { TCP, UNIX, REDIS };
 
 	class redis_config {
@@ -33,12 +36,20 @@ namespace janus {
 		unsigned int db;
 	};
 
+	/**
+	 * @brief Holds parsed query parameters from a Redis URL, like authentication and database index.
+	 */
 	struct query_info {
 		std::string username;
 		std::string password;
 		unsigned int db{0};
 	};
 
+	/**
+	 * @brief Parses the query string part of a URL (e.g., "?db=0&auth=secret").
+	 * @param query The query string to parse.
+	 * @return A query_info struct containing the parsed data.
+	 */
 	query_info parse_query_params(const std::string &query);
 
 	/**
@@ -84,6 +95,13 @@ namespace janus {
 
 	class redis_connection: public kv_connection {
 	public:
+		/**
+		 * @brief Constructs a redis_connection and connects to the server using the provided URL.
+		 *
+		 * @param url The Redis connection URL.
+		 * @throws std::runtime_error if the connection fails, authentication fails,
+		 * or the URL is invalid.
+		 */
 		explicit redis_connection(const std::string &url) {
 			const redis_config config = parse_redis_url(url);
 
@@ -126,6 +144,15 @@ namespace janus {
 			return reply->type == REDIS_REPLY_INTEGER && reply->integer == 1;
 		}
 
+		/**
+		 * @brief Retrieves all keys matching the given pattern.
+		 * @attention `KEYS` can be a performance risk on production servers. Consider using `SCAN` for iterative key
+		 * retrieval.
+		 * @attention `KEYS` can be a performance risk on production servers. Consider using `SCAN` for iterative key
+		 * retrieval.
+		 * @param pattern The pattern to match keys against (e.g., "*", "user:*").
+		 * @param keys An unordered_set to store the matching keys.
+		 */
 		void keys(const std::string &pattern, std::unordered_set<std::string> &keys) override {
 			const auto reply = exec("KEYS %s", pattern.c_str());
 			if (reply->type == REDIS_REPLY_ARRAY) {
@@ -216,6 +243,30 @@ namespace janus {
 			return reply->integer;
 		}
 
+		bool persist(const std::string &key) override {
+			const auto reply = exec("PERSIST %s", key.c_str());
+			if (reply->type != REDIS_REPLY_INTEGER) {
+				throw unexpected_reply_type_error("PERSIST", "integer", reply_type_name(reply->type));
+			}
+			return reply->integer == 1;
+		}
+
+		std::string ping() override {
+			const auto reply = exec("PING");
+			if (reply->type == REDIS_REPLY_STATUS || reply->type == REDIS_REPLY_STRING) {
+				return {reply->str, reply->len};
+			}
+			throw unexpected_reply_type_error("PING", "status or string", reply_type_name(reply->type));
+		}
+
+		std::string ping(const std::string &message) override {
+			const auto reply = exec("PING %s", message.c_str());
+			if (reply->type == REDIS_REPLY_STATUS || reply->type == REDIS_REPLY_STRING) {
+				return {reply->str, reply->len};
+			}
+			throw unexpected_reply_type_error("PING", "status or string", reply_type_name(reply->type));
+		}
+
 		long long del(const std::string &key) override {
 			const auto reply = exec("DEL %s", key.c_str());
 			if (reply->type != REDIS_REPLY_INTEGER) {
@@ -244,17 +295,7 @@ namespace janus {
 
 		bool set(const std::string &key, const std::string &value) override {
 			const auto reply = exec("SET %s %s", key.c_str(), value.c_str());
-
-			if (reply->type == REDIS_REPLY_STATUS) {
-				if (std::string(reply->str, reply->len) == "OK") {
-					return true;
-				}
-			}
-
-#ifdef DEBUG
-			std::cerr << "Warning: Redis SET returned non-'OK' status." << std::endl;
-#endif
-			return false;
+			return reply->type == REDIS_REPLY_STATUS && std::string(reply->str, reply->len) == "OK";
 		}
 
 		/* SET if Not eXists, Only set the key if it does not already exist */
@@ -284,16 +325,24 @@ namespace janus {
 
 		std::optional<std::string> get(const std::string &key) override {
 			const auto reply = exec("GET %s", key.c_str());
-			if (reply->type == REDIS_REPLY_NIL) return std::nullopt;
-			if (reply->type == REDIS_REPLY_STRING) return std::string(reply->str, reply->len);
-			return std::nullopt;
+			if (reply->type == REDIS_REPLY_STRING) {
+				return std::string(reply->str, reply->len);
+			}
+			if (reply->type == REDIS_REPLY_NIL) {
+				return std::nullopt;
+			}
+			throw unexpected_reply_type_error("GET", "string or nil", reply_type_name(reply->type));
 		}
 
 		std::optional<std::string> getset(const std::string &key, const std::string &new_value) override {
 			const auto reply = exec("GETSET %s %s", key.c_str(), new_value.c_str());
-			if (reply->type == REDIS_REPLY_NIL) return std::nullopt;
-			if (reply->type == REDIS_REPLY_STRING) return std::string(reply->str, reply->len);
-			return std::nullopt;
+			if (reply->type == REDIS_REPLY_STRING) {
+				return std::string(reply->str, reply->len);
+			}
+			if (reply->type == REDIS_REPLY_NIL) {
+				return std::nullopt;
+			}
+			throw unexpected_reply_type_error("GETSET", "string or nil", reply_type_name(reply->type));
 		}
 
 		long long incr(const std::string &key, long long delta) override {
@@ -398,17 +447,33 @@ namespace janus {
 			return reply->type == REDIS_REPLY_INTEGER && reply->integer >= 0;
 		}
 
+		/**
+		 * @brief Gets all the fields and values in a hash.
+		 * @attention `HGETALL` can be a performance risk on production servers for large hashes. Consider using
+		 * `HSCAN`.
+		 * @attention `HGETALL` can be a performance risk on production servers for large hashes. Consider using
+		 * `HSCAN`.
+		 * @param key The hash key.
+		 * @return A map containing all fields and their values.
+		 */
 		std::unordered_map<std::string, std::string> hgetall(const std::string &key) override {
 			std::unordered_map<std::string, std::string> result;
 			const auto reply = exec("HGETALL %s", key.c_str());
 			if (reply->type == REDIS_REPLY_ARRAY) {
 				for (size_t i = 0; i + 1 < reply->elements; i += 2) {
-					result.emplace(reply->element[i]->str, reply->element[i + 1]->str);
+					result.emplace(std::string(reply->element[i]->str, reply->element[i]->len),
+								   std::string(reply->element[i + 1]->str, reply->element[i + 1]->len));
 				}
 			}
 			return result;
 		}
 
+		/**
+		 * @brief Gets all the fields in a hash.
+		 * @attention `HKEYS` can be a performance risk on production servers for large hashes. Consider using `HSCAN`.
+		 * @param key The hash key.
+		 * @return A vector of field names.
+		 */
 		std::vector<std::string> hkeys(const std::string &key) override {
 			std::vector<std::string> result;
 			const auto reply = exec("HKEYS %s", key.c_str());
@@ -420,6 +485,12 @@ namespace janus {
 			return result;
 		}
 
+		/**
+		 * @brief Gets all the values in a hash.
+		 * @attention `HVALS` can be a performance risk on production servers for large hashes. Consider using `HSCAN`.
+		 * @param key The hash key.
+		 * @return A vector of values.
+		 */
 		std::vector<std::string> hvals(const std::string &key) override {
 			std::vector<std::string> result;
 			const auto reply = exec("HVALS %s", key.c_str());
@@ -443,8 +514,9 @@ namespace janus {
 		 * - the count is just a hint to the server, not an upper limit.
 		 * - the returned cursor > 0 indicates more keys to scan, not that is an index of offset.
 		 */
-		uint64_t hscan(const std::string &key, uint64_t &cursor, const std::string &pattern, unsigned int count,
+		uint64_t hscan(const std::string &key, uint64_t cursor, const std::string &pattern, unsigned int count,
 					   std::unordered_map<std::string, std::string> &hash_map) override {
+			uint64_t next_cursor = 0;
 			const std::string cursor_str = std::to_string(cursor);
 			const auto reply =
 				exec("HSCAN %s %s MATCH %s COUNT %u", key.c_str(), cursor_str.c_str(), pattern.c_str(), count);
@@ -453,7 +525,7 @@ namespace janus {
 				if (reply->element[0]->type == REDIS_REPLY_STRING) {
 					try {
 						std::string cursor_reply(reply->element[0]->str, reply->element[0]->len);
-						cursor = std::stoull(cursor_reply);
+						next_cursor = std::stoull(cursor_reply);
 					}
 					catch (const std::exception &e) {
 						throw std::runtime_error("HSCAN: failed to convert cursor to uint64_t: "
@@ -476,7 +548,7 @@ namespace janus {
 					}
 				}
 			}
-			return cursor;
+			return next_cursor;
 		}
 
 		long long hdel(const std::string &key, const std::string &hash_key) override {
@@ -590,6 +662,49 @@ namespace janus {
 			throw unexpected_reply_type_error("RPOP", "string or nil", reply_type_name(reply->type));
 		}
 
+		std::vector<std::string> lpop(const std::string &key, int count) override {
+			const auto reply = exec("LPOP %s %d", key.c_str(), count);
+			if (reply->type == REDIS_REPLY_NIL) {
+				return {};
+			}
+			if (reply->type == REDIS_REPLY_ARRAY) {
+				std::vector<std::string> result;
+				result.reserve(reply->elements);
+				for (size_t i = 0; i < reply->elements; ++i) {
+					result.emplace_back(reply->element[i]->str, reply->element[i]->len);
+				}
+				return result;
+			}
+			throw unexpected_reply_type_error("LPOP", "array or nil", reply_type_name(reply->type));
+		}
+
+		std::vector<std::string> rpop(const std::string &key, int count) override {
+			const auto reply = exec("RPOP %s %d", key.c_str(), count);
+			if (reply->type == REDIS_REPLY_NIL) {
+				return {};
+			}
+			if (reply->type == REDIS_REPLY_ARRAY) {
+				std::vector<std::string> result;
+				result.reserve(reply->elements);
+				for (size_t i = 0; i < reply->elements; ++i) {
+					result.emplace_back(reply->element[i]->str, reply->element[i]->len);
+				}
+				return result;
+			}
+			throw unexpected_reply_type_error("RPOP", "array or nil", reply_type_name(reply->type));
+		}
+
+		/**
+		 * @brief Gets a range of elements from a list.
+		 * @attention Requesting a large range with `LRANGE` can consume significant memory and bandwidth. Be cautious
+		 * with large `start` and `stop` values.
+		 * @attention Requesting a large range with `LRANGE` can consume significant memory and bandwidth. Be cautious
+		 * with large `start` and `stop` values.
+		 * @param key The list key.
+		 * @param start The starting index (0 is the head).
+		 * @param stop The stopping index (-1 is the last element).
+		 * @return A vector of elements in the specified range.
+		 */
 		std::vector<std::string> lrange(const std::string &key, long long start, long long stop) override {
 			std::vector<std::string> result;
 			const auto reply = exec("LRANGE %s %lld %lld", key.c_str(), start, stop);
@@ -613,6 +728,17 @@ namespace janus {
 				throw unexpected_reply_type_error("LLEN", "integer", reply_type_name(reply->type));
 			}
 			return reply->integer;
+		}
+
+		std::optional<std::string> lindex(const std::string &key, long long index) override {
+			const auto reply = exec("LINDEX %s %lld", key.c_str(), index);
+			if (reply->type == REDIS_REPLY_NIL) {
+				return std::nullopt;
+			}
+			if (reply->type == REDIS_REPLY_STRING) {
+				return std::string(reply->str, reply->len);
+			}
+			throw unexpected_reply_type_error("LINDEX", "string or nil", reply_type_name(reply->type));
 		}
 
 		// ============================================================================
@@ -665,6 +791,12 @@ namespace janus {
 			return reply->integer;
 		}
 
+		/**
+		 * @brief Returns all the members of the set.
+		 * @attention `SMEMBERS` can be a performance risk on production servers for large sets. Consider using `SSCAN`.
+		 * @param key The set key.
+		 * @return A vector containing all members of the set. Returns an empty vector if the key does not exist.
+		 */
 		std::vector<std::string> smembers(const std::string &key) override {
 			std::vector<std::string> result;
 			const auto reply = exec("SMEMBERS %s", key.c_str());
@@ -705,6 +837,12 @@ namespace janus {
 			throw unexpected_reply_type_error("SPOP", "string or nil", reply_type_name(reply->type));
 		}
 
+		/**
+		 * @brief Returns the members resulting from the intersection of all the given sets.
+		 * @attention `SINTER` can be slow if the sets involved are large.
+		 * @param keys The keys of the sets to intersect.
+		 * @return A vector of members resulting from the intersection.
+		 */
 		std::vector<std::string> sinter(const std::vector<std::string> &keys) override {
 			if (keys.empty()) return {};
 
@@ -1002,9 +1140,9 @@ namespace janus {
 			argv.push_back("EVAL");
 			argv_len.push_back(4); // length of "EVAL"
 			argv.push_back(script.c_str());
-			argv_len.push_back(script.size()); // length of script
+			argv_len.push_back(script.size());
 			if (keys.size() > MAX_SCRIPT_KEYS) {
-				throw too_many_script_keys_error("EVALSHA", keys.size(), MAX_SCRIPT_KEYS);
+				throw too_many_script_keys_error("EVAL", keys.size(), MAX_SCRIPT_KEYS);
 			}
 			char num_keys_buf[NUM_KEYS_BUF_SIZE];
 			int num_keys_len = std::snprintf(num_keys_buf, sizeof(num_keys_buf), "%zu", keys.size());
@@ -1041,6 +1179,14 @@ namespace janus {
 	protected:
 		// parse redis reply to cmd_reply
 		// NOLINTNEXTLINE
+		/**
+		 * @brief Recursively parses a hiredis redisReply object into a janus::cmd_reply.
+		 *
+		 * This function handles the translation between the C-style hiredis reply
+		 * and the C++ object-oriented cmd_reply, including nested arrays.
+		 * @param r A pointer to the redisReply to parse.
+		 * @return A cmd_reply object representing the Redis response.
+		 */
 		static cmd_reply parse_reply(const redisReply *r) {
 			if (!r) return cmd_reply::make_error("Null reply");
 			switch (r->type) {
@@ -1068,11 +1214,21 @@ namespace janus {
 		}
 
 		// Map janus::reply_type enum to human-readable name
+		/**
+		 * @brief Maps a janus::reply_type enum to its human-readable string name.
+		 * @param t The reply_type enum value.
+		 * @return A C-style string representing the name (e.g., "string", "array").
+		 */
 		static const char *reply_type_name(reply_type t) {
 			return reply_type_name(static_cast<unsigned int>(t));
 		}
 
 		// Accept raw int (hiredis) reply type as well
+		/**
+		 * @brief Maps a raw hiredis reply type integer to its human-readable string name.
+		 * @param type The integer reply type from a redisReply object.
+		 * @return A C-style string representing the name (e.g., "string", "array").
+		 */
 		static const char *reply_type_name(unsigned int type) {
 			switch (type) {
 				case REDIS_REPLY_STRING:
@@ -1092,6 +1248,14 @@ namespace janus {
 			}
 		}
 
+		/**
+		 * @brief Executes a Redis command with a printf-style format string.
+		 * @param fmt The format string for the command.
+		 * @param ... Arguments for the format string.
+		 * @return A smart pointer to the Redis reply.
+		 * @throws std::runtime_error if the command fails at the hiredis level.
+		 * @throws redis_error if Redis returns an error reply.
+		 */
 		redis_reply_ptr exec(const char *fmt, ...) const {
 			va_list ap;
 			va_start(ap, fmt);
@@ -1107,6 +1271,14 @@ namespace janus {
 			return redis_reply_ptr(r);
 		}
 
+		/**
+		 * @brief Executes a Redis command with an array of arguments.
+		 * @param argv Vector of C-style strings representing the command and its arguments.
+		 * @param argv_len Vector of lengths for each string in argv.
+		 * @return A smart pointer to the Redis reply.
+		 * @throws std::runtime_error if the command fails at the hiredis level.
+		 * @throws redis_error if Redis returns an error reply.
+		 */
 		[[nodiscard]] redis_reply_ptr execv(const std::vector<const char *> &argv,
 											const std::vector<size_t> &argv_len) const {
 			// NOLINTNEXTLINE

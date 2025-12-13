@@ -1,7 +1,22 @@
 #include "janus/redis_connection.hpp"
 #include "gtest/gtest.h"
+#include "janus/janus.hpp"
 
-TEST(parse_redis_url_test, tcp_scheme) {
+#include "test_env.hpp"
+
+class RedisConnectionTest: public testing::Test {
+protected:
+	std::unique_ptr<janus::redis_connection> conn;
+	std::unique_ptr<janus::string_redis_template> tpl;
+
+	RedisConnectionTest() {
+		std::string redis_url = get_redis_connection_url();
+		conn = std::make_unique<janus::redis_connection>(redis_url);
+		tpl = std::make_unique<janus::string_redis_template>(*conn);
+	}
+};
+
+TEST(ParseRedisUrlTest, TcpScheme) {
 	// Basic TCP URL with host and port
 	{
 		auto config = janus::parse_redis_url("tcp://localhost:6380");
@@ -68,7 +83,7 @@ TEST(parse_redis_url_test, tcp_scheme) {
 	}
 }
 
-TEST(parse_redis_url_test, redis_scheme) {
+TEST(ParseRedisUrlTest, RedisScheme) {
 	// 'redis://' is an alias for 'tcp://'
 	auto config = janus::parse_redis_url("redis://user:secret@host:1234?db=2");
 	EXPECT_EQ(config.scheme, janus::redis_scheme::REDIS);
@@ -79,7 +94,7 @@ TEST(parse_redis_url_test, redis_scheme) {
 	EXPECT_EQ(config.db, 2);
 }
 
-TEST(parse_redis_url_test, unix_scheme) {
+TEST(ParseRedisUrlTest, UnixScheme) {
 	// Basic unix socket
 	{
 		auto config = janus::parse_redis_url("unix:///var/run/redis.sock");
@@ -109,7 +124,7 @@ TEST(parse_redis_url_test, unix_scheme) {
 	}
 }
 
-TEST(parse_redis_url_test, invalid_urls) {
+TEST(ParseRedisUrlTest, InvalidUrls) {
 	// Invalid scheme
 	EXPECT_THROW(janus::parse_redis_url("http://localhost"), std::invalid_argument);
 
@@ -121,4 +136,13 @@ TEST(parse_redis_url_test, invalid_urls) {
 
 	// Relative unix path (must be absolute)
 	EXPECT_THROW(janus::parse_redis_url("unix://relative/path"), std::invalid_argument);
+}
+
+TEST_F(RedisConnectionTest, Ping) {
+	// Test PING without a message
+	EXPECT_EQ(tpl->ping(), "PONG");
+
+	// Test PING with a message
+	std::string message = "hello world";
+	EXPECT_EQ(tpl->ping(message), message);
 }

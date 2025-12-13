@@ -12,6 +12,9 @@ namespace janus {
 
 	class kv_connection {
 	public:
+		/**
+		 * @brief Virtual destructor for polymorphic destruction.
+		 */
 		virtual ~kv_connection() = default;
 
 		virtual bool exists(const std::string &key) = 0;
@@ -46,12 +49,29 @@ namespace janus {
 		 */
 		virtual std::string type(const std::string &key) = 0;
 
+		/**
+		 * @brief Set a timeout on key.
+		 * @param key The key.
+		 * @param seconds The timeout in seconds.
+		 * @return true if the timeout was set, false otherwise.
+		 */
 		virtual bool expire(const std::string &key, int seconds) = 0;
 
+		/**
+		 * @brief Set a timeout on key in milliseconds.
+		 * @param key The key.
+		 * @param milliseconds The timeout in milliseconds.
+		 * @return true if the timeout was set, false otherwise.
+		 */
 		virtual bool pexpire(const std::string &key, int milliseconds) = 0;
 
-		virtual long long del(const std::string &keys) = 0;
+		virtual long long del(const std::string &key) = 0;
 
+		/**
+		 * @brief Deletes one or more keys.
+		 * @param keys The keys to delete.
+		 * @return The number of keys that were removed.
+		 */
 		virtual long long del(const std::vector<std::string> &keys) = 0;
 
 		/**
@@ -76,10 +96,37 @@ namespace janus {
 		 */
 		virtual int64_t pttl(const std::string &key) = 0;
 
+		/**
+		 * @brief Remove the expiration from a key.
+		 * @param key The key.
+		 * @return true if the timeout was removed, false if the key does not exist or does not have an associated
+		 * timeout.
+		 */
+		virtual bool persist(const std::string &key) = 0;
+
+		/**
+		 * @brief Pings the server.
+		 * @return The server's response, typically "PONG".
+		 */
+		virtual std::string ping() = 0;
+
+		/**
+		 * @brief Pings the server with a custom message.
+		 * @param message The message to send.
+		 * @return The server's response, which should be the same as the message.
+		 */
+		virtual std::string ping(const std::string &message) = 0;
+
 		// ============================================================================
 		// For String
 		// ============================================================================
 
+		/**
+		 * @brief Set the string value of a key.
+		 * @param key The key.
+		 * @param value The value.
+		 * @return true on success.
+		 */
 		virtual bool set(const std::string &key, const std::string &value) = 0;
 		/* SET if Not eXists, Only set the key if it does not already exist */
 		virtual bool set_not_exists(const std::string &key, const std::string &value) = 0;
@@ -88,14 +135,43 @@ namespace janus {
 		/* Set the specified expire time, in milliseconds */
 		virtual bool set_px(const std::string &key, const std::string &value, int milliseconds) = 0;
 
+		/**
+		 * @brief Get the value of a key.
+		 * @param key The key.
+		 * @return The value, or std::nullopt if the key does not exist.
+		 */
 		virtual std::optional<std::string> get(const std::string &key) = 0;
 
+		/**
+		 * @brief Atomically sets key to value and returns the old value stored at key.
+		 * @param key The key.
+		 * @param new_value The new value to set.
+		 * @return The old value, or std::nullopt if the key did not exist.
+		 */
 		virtual std::optional<std::string> getset(const std::string &key, const std::string &new_value) = 0;
 
+		/**
+		 * @brief Increments the number stored at key by delta.
+		 * @param key The key.
+		 * @param delta The amount to increment by.
+		 * @return The value of key after the increment.
+		 */
 		virtual long long incr(const std::string &key, long long delta) = 0;
 
+		/**
+		 * @brief Decrements the number stored at key by delta.
+		 * @param key The key.
+		 * @param delta The amount to decrement by.
+		 * @return The value of key after the decrement.
+		 */
 		virtual long long decr(const std::string &key, long long delta) = 0;
 
+		/**
+		 * @brief Appends a value to a key.
+		 * @param key The key.
+		 * @param value The value to append.
+		 * @return The length of the string after the append operation.
+		 */
 		virtual long long append(const std::string &key, const std::string &value) = 0;
 
 		// ============================================================================
@@ -104,17 +180,50 @@ namespace janus {
 
 		virtual std::optional<std::string> hget(const std::string &key, const std::string &hash_key) = 0;
 
+		/**
+		 * @brief Gets the values associated with the specified fields in the hash stored at key.
+		 * @param key The hash key.
+		 * @param hash_map Input: a map with fields to query. Output: the map is updated with found values.
+		 */
 		virtual void hget(const std::string &key,
 						  std::unordered_map<std::string, std::optional<std::string>> &hash_map) = 0;
 
+		/**
+		 * @brief Sets the string value of a hash field.
+		 * @param key The hash key.
+		 * @param field The field in the hash.
+		 * @param value The value to set.
+		 * @return true if a new field was created and set, false if the field already existed and was updated.
+		 */
 		virtual bool hset(const std::string &key, const std::string &field, const std::string &value) = 0;
 
+		/**
+		 * @brief Sets multiple hash fields to multiple values.
+		 * @param key The hash key.
+		 * @param hash_map A map of field-value pairs to set.
+		 * @return true on success.
+		 */
 		virtual bool hset(const std::string &key, const std::unordered_map<std::string, std::string> &hash_map) = 0;
 
+		/**
+		 * @brief Gets all the fields and values in a hash.
+		 * @param key The hash key.
+		 * @return A map containing all fields and their values.
+		 */
 		virtual std::unordered_map<std::string, std::string> hgetall(const std::string &key) = 0;
 
+		/**
+		 * @brief Gets all the fields in a hash.
+		 * @param key The hash key.
+		 * @return A vector of field names.
+		 */
 		virtual std::vector<std::string> hkeys(const std::string &key) = 0;
 
+		/**
+		 * @brief Gets all the values in a hash.
+		 * @param key The hash key.
+		 * @return A vector of values.
+		 */
 		virtual std::vector<std::string> hvals(const std::string &key) = 0;
 
 		/**
@@ -130,11 +239,23 @@ namespace janus {
 		 * - the count is just a hint to the server, not an upper limit.
 		 * - the returned cursor > 0 indicates more keys to scan, not that is an index of offset.
 		 */
-		virtual uint64_t hscan(const std::string &key, uint64_t &cursor, const std::string &pattern, unsigned int count,
+		virtual uint64_t hscan(const std::string &key, uint64_t cursor, const std::string &pattern, unsigned int count,
 							   std::unordered_map<std::string, std::string> &hash_map) = 0;
 
+		/**
+		 * @brief Deletes one field from a hash.
+		 * @param key The hash key.
+		 * @param hash_key The field to delete.
+		 * @return The number of fields that were removed (1 or 0).
+		 */
 		virtual long long hdel(const std::string &key, const std::string &hash_key) = 0;
 
+		/**
+		 * @brief Deletes one or more fields from a hash.
+		 * @param key The hash key.
+		 * @param hash_keys The fields to delete.
+		 * @return The number of fields that were removed.
+		 */
 		virtual long long hdel(const std::string &key, const std::vector<std::string> &hash_keys) = 0;
 
 		// ============================================================================
@@ -188,6 +309,22 @@ namespace janus {
 		virtual std::optional<std::string> rpop(const std::string &key) = 0;
 
 		/**
+		 * @brief Removes and gets up to `count` elements from the head (left) of a list.
+		 * @param key The list key.
+		 * @param count The maximum number of elements to pop.
+		 * @return A vector of popped elements. Returns an empty vector if the key does not exist or the list is empty.
+		 */
+		virtual std::vector<std::string> lpop(const std::string &key, int count) = 0;
+
+		/**
+		 * @brief Removes and gets up to `count` elements from the tail (right) of a list.
+		 * @param key The list key.
+		 * @param count The maximum number of elements to pop.
+		 * @return A vector of popped elements. Returns an empty vector if the key does not exist or the list is empty.
+		 */
+		virtual std::vector<std::string> rpop(const std::string &key, int count) = 0;
+
+		/**
 		 * @brief Gets a range of elements from a list.
 		 * @param key The list key.
 		 * @param start The starting index (0 is the head).
@@ -202,6 +339,14 @@ namespace janus {
 		 * @return The length of the list. Returns 0 if the key does not exist.
 		 */
 		virtual long long llen(const std::string &key) = 0;
+
+		/**
+		 * @brief Gets an element from a list by its index.
+		 * @param key The list key.
+		 * @param index The index of the element to get (0 is the first, -1 is the last).
+		 * @return The element at the specified index, or std::nullopt if the index is out of range.
+		 */
+		virtual std::optional<std::string> lindex(const std::string &key, long long index) = 0;
 
 		// ============================================================================
 		// For Set
@@ -342,8 +487,20 @@ namespace janus {
 		 */
 		virtual double zincrby(const std::string &key, double increment, const std::string &member) = 0;
 
+		/**
+		 * @brief Load the given Lua script into the script cache.
+		 * @param script The script content.
+		 * @return The SHA1 digest of the script.
+		 */
 		virtual std::string script_load(const std::string &script) = 0;
 
+		/**
+		 * @brief Evaluate a script cached on the server side, by its SHA1 digest.
+		 * @param sha1 The SHA1 digest of the script.
+		 * @param keys The keys that the script will access.
+		 * @param args The arguments to pass to the script.
+		 * @return The result of the script execution.
+		 */
 		virtual cmd_reply eval_sha1(const std::string &sha1, const std::vector<std::string> &keys,
 									const std::vector<std::string> &args) = 0;
 		/**

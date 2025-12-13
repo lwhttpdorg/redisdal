@@ -1,7 +1,6 @@
 # This configuration file automates the creation and registration of GTest executables.
 # It ensures each test source file creates an independent executable for fast debugging.
 # It uses 'gtest_discover_tests' for CTest integration and sets a default timeout.
-
 # --- 1. Fetch External Dependencies ---
 include(FetchContent)
 FetchContent_Declare(
@@ -17,20 +16,28 @@ FetchContent_MakeAvailable(googletest)
 
 include(GoogleTest)
 
-# --- 2. Define Common Test Libraries ---
+# Find the platform-specific thread library
+find_package(Threads REQUIRED)
+
+# --- 2. Create a common library for shared test code ---
+# This avoids recompiling test_env.cpp for every single test executable.
+set(COMMON_TEST_FILES test_env.cpp)
+add_library(janus_test_env STATIC ${COMMON_TEST_FILES})
+
+# Link the main janus library to our test environment library.
+# This makes the janus library's headers and symbols available to test_env.cpp.
+target_link_libraries(janus_test_env PRIVATE janus)
+
+# --- 3. Define Common Test Libraries ---
 set(JANUS_TEST_LIBS
-    janus           # For interfaces and include directories
-    gtest_main      # For GTest entry point (provides main() and links gtest/gtest_main)
-    hiredis::hiredis # For underlying Redis connection
-    pthread         # For threading support
+    janus_test_env   # Our common test code (which already includes the 'janus' library).
+    gtest            # The GTest framework (without a main function, as we provide our own).
+    Threads::Threads # Platform-agnostic threading support.
 )
 
-# --- 3. Auto-discover Test Source Files ---
+# --- 4. Auto-discover Test Source Files ---
 # Find all files ending with '_test.cpp' in the current CMake directory (may return full paths).
 file(GLOB TEST_SOURCE_FILES "*_test.cpp")
-
-# Define the common environment file required by all tests
-set(COMMON_TEST_FILE test_env.cpp)
 
 # --- 4. Set Default Timeout ---
 # Set a default timeout for all tests (in seconds)
@@ -38,7 +45,7 @@ set(DEFAULT_TEST_TIMEOUT 10)
 message(STATUS "Setting default test timeout to ${DEFAULT_TEST_TIMEOUT} seconds.")
 
 # --- 5. Iterate and Configure Independent Test Executables ---
-# Loop through each discovered test source file
+# Loop through each discovered test source file to create a dedicated executable.
 foreach (TEST_FILE ${TEST_SOURCE_FILES})
 
     # CRITICAL FIX: Extract the pure filename from the full path first.
@@ -55,8 +62,8 @@ foreach (TEST_FILE ${TEST_SOURCE_FILES})
 
     # 1. Define the independent executable target
     # TEST_NAME is now a valid target name (e.g., hash_ops_test).
-    # We use the full ${TEST_FILE} path as the source for the executable.
-    add_executable(${TEST_NAME} ${TEST_FILE} ${COMMON_TEST_FILE})
+    # Each test executable is built from its own source file.
+    add_executable(${TEST_NAME} ${TEST_FILE})
 
     # 2. Link common dependencies
     target_link_libraries(
@@ -73,10 +80,3 @@ foreach (TEST_FILE ${TEST_SOURCE_FILES})
     )
 
 endforeach ()
-
-# --- Build Comprehensive Example ---
-# This builds the main example from the README as a standalone executable.
-# It is not a CTest test but serves as a runnable demonstration of the library's features.
-add_executable(janus_example janus_example.cpp)
-target_link_libraries(janus_example PRIVATE ${JANUS_TEST_LIBS})
-gtest_discover_tests(janus_example TIMEOUT ${DEFAULT_TEST_TIMEOUT})

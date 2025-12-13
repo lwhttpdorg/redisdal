@@ -35,48 +35,34 @@ endif ()
 
 find_package(hiredis QUIET)
 
-if (TARGET hiredis::hiredis)
-    target_link_libraries(${TARGET_NAME} INTERFACE hiredis::hiredis)
-else ()
+if (NOT TARGET hiredis::hiredis)
     find_path(HIREDIS_INCLUDE_DIR hiredis/hiredis.h)
     find_library(HIREDIS_LIB hiredis)
-
+ 
     if (NOT HIREDIS_INCLUDE_DIR OR NOT HIREDIS_LIB)
         message(FATAL_ERROR "hiredis not found")
     endif ()
-
+ 
     add_library(hiredis INTERFACE IMPORTED GLOBAL)
     target_include_directories(hiredis INTERFACE ${HIREDIS_INCLUDE_DIR})
     target_link_libraries(hiredis INTERFACE ${HIREDIS_LIB})
-
+ 
     add_library(hiredis::hiredis ALIAS hiredis)
-
-    target_link_libraries(${TARGET_NAME} INTERFACE hiredis::hiredis)
 endif ()
 
+target_link_libraries(${TARGET_NAME} PRIVATE hiredis::hiredis)
+
 # --- Installation Rules ---
-include(GNUInstallDirs)
-
-# Install the shared library target
-# The EXPORT parameter generates a CMake export file, which allows other
-# projects to use find_package(janus) to link against this library.
-install(TARGETS ${TARGET_NAME}
-    EXPORT ${PROJECT_NAME}Targets
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+# install headers
+install(
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/janus
+    DESTINATION include # Installs to <prefix>/include/janus
 )
 
-# Install the public headers
-# This installs the headers into <prefix>/include/janus, which is a standard practice.
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/janus
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
-
-# Install the generated CMake export files.
-# This allows other projects to easily find and use the janus library.
-install(EXPORT ${PROJECT_NAME}Targets
-    FILE ${PROJECT_NAME}Targets.cmake
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}
+# install libraries
+install(
+    DIRECTORY ${CMAKE_BINARY_DIR}/lib/
+    DESTINATION lib
 )
 
 option(ENABLE_JANUS_TEST "Enable janus test" OFF)

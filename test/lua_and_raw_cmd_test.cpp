@@ -2,6 +2,7 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -10,57 +11,39 @@
 
 #include "test_env.hpp"
 
-class execute_cmd_lua_test: public testing::Test {
+class LuaAndRawCmdTest: public testing::Test {
 protected:
 	using key_type = std::string;
 	using value_type = unsigned long long;
 
-	std::shared_ptr<janus::serializer<key_type>> k_serializer;
-	std::shared_ptr<janus::serializer<value_type>> v_serializer;
+	std::unique_ptr<janus::redis_connection> conn;
 	std::unique_ptr<janus::redis_template<key_type, value_type>> tpl;
-	std::shared_ptr<janus::kv_connection> connection;
+	std::set<key_type> keys_to_clean;
+	janus::string_serializer<key_type> key_serializer;
+	janus::string_serializer<value_type> value_serializer;
 
-	void SetUp() override {
-		// 1. Retrieve connection parameters from environment variables
+	LuaAndRawCmdTest() {
 		std::string redis_url = get_redis_connection_url();
-
-		// 2. Create underlying connection
-		connection = std::make_shared<janus::redis_connection>(redis_url);
-
-		k_serializer = std::make_shared<janus::string_serializer<key_type>>();
-		v_serializer = std::make_shared<janus::string_serializer<value_type>>();
-
-		tpl = std::make_unique<janus::redis_template<key_type, value_type>>(*connection, *k_serializer, *v_serializer);
-
-		clear_keys();
+		conn = std::make_unique<janus::redis_connection>(redis_url);
+		tpl = std::make_unique<janus::redis_template<key_type, value_type>>(*conn, key_serializer, value_serializer);
 	}
 
 	void TearDown() override {
-		if (tpl) {
-			clear_keys();
+		for (const auto &key: keys_to_clean) {
+			tpl->del(key);
 		}
-	}
-
-	void clear_keys() const {
-		tpl->del("test_exec_cmd_key");
-		tpl->del("test_lua_incr_key");
-	}
-
-	[[nodiscard]] auto &value_ops() const {
-		return tpl->ops_for_value();
 	}
 };
 
-// Execute a raw Redis command (SET + GET) via low-level connection
-TEST_F(execute_cmd_lua_test, exec_command_set_get) {
+TEST_F(LuaAndRawCmdTest, exec_command_set_get) {
 	const key_type key = "test_exec_cmd_key";
+	keys_to_clean.insert(key);
 
 	try {
 		std::vector<std::string> args = {key, "4242"};
 		tpl->exec_cmd("SET", args);
 
-		// Verify using high-level value operations
-		auto val = value_ops().get(key);
+		auto val = tpl->ops_for_value().get(key);
 		ASSERT_TRUE(val) << "GET after raw SET returned no value";
 		EXPECT_EQ(*val, 4242ULL);
 	}
@@ -69,18 +52,17 @@ TEST_F(execute_cmd_lua_test, exec_command_set_get) {
 	}
 }
 
-// Evaluate a small Lua script that increments a numeric key by ARGV[1]
-TEST_F(execute_cmd_lua_test, eval_lua_incr_script) {
+TEST_F(LuaAndRawCmdTest, eval_lua_incr_script) {
 	const key_type key = "test_lua_incr_key";
+	keys_to_clean.insert(key);
 
-	// Initialize key to 10
-	ASSERT_TRUE(value_ops().set(key, 10ULL));
+	ASSERT_TRUE(tpl->ops_for_value().set(key, 10ULL));
 
 	// Lua script: increment KEYS[1] by ARGV[1] and return the new value
 	const std::string script = "return redis.call('INCRBY', KEYS[1], ARGV[1])";
 
 	try {
-		std::vector keys = {key};
+		std::vector<key_type> keys = {key};
 		std::vector<value_type> args = {7};
 
 		janus::cmd_reply reply = tpl->eval(script, keys, args);
@@ -91,8 +73,7 @@ TEST_F(execute_cmd_lua_test, eval_lua_incr_script) {
 
 		EXPECT_EQ(new_val.value(), 17ULL) << "Lua script did not return expected incremented value";
 
-		// Also verify via high-level get
-		auto current = value_ops().get(key);
+		auto current = tpl->ops_for_value().get(key);
 		ASSERT_TRUE(current);
 		EXPECT_EQ(*current, 17ULL);
 	}
@@ -101,12 +82,11 @@ TEST_F(execute_cmd_lua_test, eval_lua_incr_script) {
 	}
 }
 
-// Test EVALSHA path and automatic reload when server reports NOSCRIPT
-TEST_F(execute_cmd_lua_test, eval_sha1_autoreload) {
+TEST_F(LuaAndRawCmdTest, eval_sha1_autoreload) {
 	const key_type key = "test_lua_incr_key";
+	keys_to_clean.insert(key);
 
-	// Initialize key to 100
-	ASSERT_TRUE(value_ops().set(key, 100ULL));
+	ASSERT_TRUE(tpl->ops_for_value().set(key, 100ULL));
 
 	const std::string script = "return redis.call('INCRBY', KEYS[1], ARGV[1])";
 
@@ -114,7 +94,7 @@ TEST_F(execute_cmd_lua_test, eval_sha1_autoreload) {
 		// Load script and get sha1
 		std::string sha = tpl->script_load(script);
 
-		std::vector keys = {key};
+		std::vector<key_type> keys = {key};
 		std::vector<value_type> args = {5};
 
 		// First call using EVALSHA should work

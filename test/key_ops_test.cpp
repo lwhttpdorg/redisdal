@@ -3,6 +3,7 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_set>
@@ -14,82 +15,40 @@
 #include "test_env.hpp"
 
 // The Test Fixture class, implementing SetUp/TearDown logic
-class key_operations_test: public testing::Test {
+class KeyOpsTest: public testing::Test {
 protected:
 	// Type aliases
 	using key_type = std::string;
 	using value_type = unsigned int;
 
-	// Test Keys
-	const key_type test_key_single = "ops_test_single_key";
-	const key_type test_key_ttl = "ops_test_ttl_key";
-	const key_type test_key_pttl = "ops_test_pttl_key";
-	const key_type test_key_del_a = "ops_test_del_a";
-	const key_type test_key_del_b = "ops_test_del_b";
-	const key_type non_existent_key = "ops_test_non_existent_key_for_del";
-
-	std::shared_ptr<janus::kv_connection> connection;
-	std::shared_ptr<janus::serializer<key_type>> k_serializer;
-	std::shared_ptr<janus::serializer<value_type>> v_serializer;
+	std::unique_ptr<janus::redis_connection> conn;
 	std::unique_ptr<janus::redis_template<key_type, value_type>> tpl;
+	std::set<key_type> keys_to_clean;
+	janus::string_serializer<key_type> key_serializer;
+	janus::string_serializer<value_type> value_serializer;
 
-	void SetUp() override {
-		// 1. Retrieve connection parameters from environment variables
+	KeyOpsTest() {
 		std::string redis_url = get_redis_connection_url();
-
-		// 2. Create underlying connection
-		connection = std::make_shared<janus::redis_connection>(redis_url);
-
-		// 3. Create Serializers
-		k_serializer = std::make_shared<janus::string_serializer<key_type>>();
-		v_serializer = std::make_shared<janus::string_serializer<value_type>>();
-
-		// 4. Construct redis_template
-		tpl = std::make_unique<janus::redis_template<key_type, value_type>>(*connection, *k_serializer, *v_serializer);
-
-		// 5. Clean up test key
-		clear_test_keys();
+		conn = std::make_unique<janus::redis_connection>(redis_url);
+		tpl = std::make_unique<janus::redis_template<key_type, value_type>>(*conn, key_serializer, value_serializer);
 	}
 
 	void TearDown() override {
-		// 6. Clean up test key
-		if (tpl) {
-			clear_test_keys();
+		for (const auto &key: keys_to_clean) {
+			tpl->del(key);
 		}
-	}
-
-	// Helper to clean keys
-	void clear_test_keys() const {
-		if (tpl) {
-			tpl->del({test_key_single, test_key_ttl, test_key_pttl, test_key_del_a, test_key_del_b, non_existent_key});
-		}
-	}
-
-	// Helper function to get String (Value) operations interface
-	[[nodiscard]] auto &value_ops() const {
-		return tpl->ops_for_value();
-	}
-
-	// Helper function to ensure a key exists (by setting a default value)
-	void set_test_key(const key_type &key) const {
-		// Set an arbitrary value to ensure key existence
-		ASSERT_TRUE(value_ops().set(key, 0U)) << "Helper: Failed to set value for key: " << key;
 	}
 };
 
-// -----------------------------------------------------------------------------
-// Test Case 1: exists(K) and del(K/vector<K>)
-// -----------------------------------------------------------------------------
-
-// Test: set creates key, exists returns true, del removes key, exists returns false.
-TEST_F(key_operations_test, exists_set_del_single) {
-	key_type test_key = test_key_single;
+TEST_F(KeyOpsTest, ExistsSetDel) {
+	const key_type test_key = "ops_test_single_key";
 
 	// 1. Initial state: Key should not exist
 	ASSERT_FALSE(tpl->exists(test_key)) << "Key should not exist initially.";
 
 	// 2. Set value
-	set_test_key(test_key);
+	tpl->ops_for_value().set(test_key, 1);
+	keys_to_clean.insert(test_key);
 
 	// 3. After SET: Key should exist
 	ASSERT_TRUE(tpl->exists(test_key)) << "Key should exist after SET.";
@@ -106,15 +65,16 @@ TEST_F(key_operations_test, exists_set_del_single) {
 	EXPECT_EQ(deleted_count_non_existing, 0) << "DEL on non-existent key should return 0.";
 }
 
-// Test: deleting multiple keys, including non-existent ones, and verifying deletion.
-TEST_F(key_operations_test, del_multiple) {
-	key_type key_a = test_key_del_a;
-	key_type key_b = test_key_del_b;
-	key_type key_c_non_existent = non_existent_key; // A key guaranteed not to exist
+TEST_F(KeyOpsTest, DelMultipleKey) {
+	const key_type key_a = "ops_test_del_a";
+	const key_type key_b = "ops_test_del_b";
+	const key_type key_c_non_existent = "ops_test_non_existent_key_for_del";
 
 	// 1. Setup: Ensure A and B exist, C does not
-	set_test_key(key_a);
-	set_test_key(key_b);
+	tpl->ops_for_value().set(key_a, 1);
+	tpl->ops_for_value().set(key_b, 1);
+	keys_to_clean.insert({key_a, key_b});
+
 	ASSERT_TRUE(tpl->exists(key_a) && tpl->exists(key_b)) << "Setup failed: Test keys A and B must exist.";
 	ASSERT_FALSE(tpl->exists(key_c_non_existent)) << "Setup failed: Test key C must not exist.";
 
@@ -131,21 +91,18 @@ TEST_F(key_operations_test, del_multiple) {
 	EXPECT_FALSE(tpl->exists(key_b)) << "Key B should be deleted after bulk DEL.";
 }
 
-// -----------------------------------------------------------------------------
-// Test Case 2: expire/ttl
-// -----------------------------------------------------------------------------
+TEST_F(KeyOpsTest, TTLAndExpireTest) {
+	const key_type test_key = "ops_test_ttl_key";
+	const key_type non_existent_key = "non_existent";
 
-// Test: Set TTL, then verify that the value read by ttl() is <= the set value.
-// Test: ttl() return values for non-existent key (-2), persistent key (-1), and expiring key (> 0).
-TEST_F(key_operations_test, ttl_and_expire) {
-	key_type test_key = test_key_ttl;
 	constexpr long long ttl_seconds = 5;
 
 	// 1. Test TTL on non-existent key (should return -2)
-	EXPECT_EQ(tpl->ttl(non_existent_key), -2) << "TTL on non-existent key must return -2.";
+	EXPECT_EQ(tpl->ttl(non_existent_key), -2);
 
 	// 2. Setup: Key exists but has no TTL
-	set_test_key(test_key);
+	tpl->ops_for_value().set(test_key, 1);
+	keys_to_clean.insert(test_key);
 
 	// 3. Test TTL on persistent key (should return -1)
 	EXPECT_EQ(tpl->ttl(test_key), -1) << "TTL on persistent key must return -1.";
@@ -168,22 +125,19 @@ TEST_F(key_operations_test, ttl_and_expire) {
 	EXPECT_LE(remaining_ttl_after_delay, remaining_ttl) << "TTL must decrease over time.";
 }
 
-// -----------------------------------------------------------------------------
-// Test Case 3: pexpire/pttl
-// -----------------------------------------------------------------------------
+TEST_F(KeyOpsTest, pttl_and_pexpire) {
+	const key_type test_key = "ops_test_pttl_key";
+	const key_type non_existent_key = "non_existent";
 
-// Test: Set PTTL, then verify that the value read by pttl() is <= the set value.
-// Test: pttl() return values for non-existent key (-2), persistent key (-1), and expiring key (> 0).
-TEST_F(key_operations_test, pttl_and_pexpire) {
-	key_type test_key = test_key_pttl;
 	constexpr int pttl_milliseconds = 5000; // 5 seconds
 	constexpr int sleep_milliseconds = 2000; // 2 second
 
 	// 1. Test PTTL on non-existent key (should return -2)
-	EXPECT_EQ(tpl->pttl(non_existent_key), -2) << "PTTL on non-existent key must return -2.";
+	EXPECT_EQ(tpl->pttl(non_existent_key), -2);
 
 	// 2. Setup: Key exists but has no TTL
-	set_test_key(test_key);
+	tpl->ops_for_value().set(test_key, 1);
+	keys_to_clean.insert(test_key);
 
 	// 3. Test PTTL on persistent key (should return -1)
 	EXPECT_EQ(tpl->pttl(test_key), -1) << "PTTL on persistent key must return -1.";
@@ -208,12 +162,37 @@ TEST_F(key_operations_test, pttl_and_pexpire) {
 		<< "PTTL must decrease by at least the sleep time (actual decay >= sleep time).";
 }
 
-// -----------------------------------------------------------------------------
-// Test Case 4: keys(pattern) - Testing redis_template implementation
-// -----------------------------------------------------------------------------
+TEST_F(KeyOpsTest, Persist) {
+	const key_type test_key1 = "mykey:persist";
+	const key_type test_key2 = "mykey:no_expiry";
 
-// Test: Verify redis_template's keys(pattern) correctly finds and deserializes keys.
-TEST_F(key_operations_test, template_keys_pattern_matching) {
+	tpl->ops_for_value().set(test_key1, 1);
+	keys_to_clean.insert(test_key1);
+
+	// 1. Set a key with an expiration
+	ASSERT_TRUE(tpl->expire(test_key1, 60));
+
+	// 2. Check that TTL is set and positive
+	int64_t time_to_live = tpl->ttl(test_key1);
+	EXPECT_GT(time_to_live, 0);
+	EXPECT_LE(time_to_live, 60);
+
+	// 3. Persist the key to remove expiration
+	EXPECT_TRUE(tpl->persist(test_key1));
+
+	// 4. Check that TTL is now -1 (persistent)
+	EXPECT_EQ(tpl->ttl(test_key1), -1);
+
+	// 5. Test persist on a non-existent key
+	EXPECT_FALSE(tpl->persist("nonexistent:key"));
+
+	// 6. Test persist on a key with no expiry
+	tpl->ops_for_value().set(test_key2, 1);
+	keys_to_clean.insert(test_key2);
+	EXPECT_FALSE(tpl->persist(test_key2));
+}
+
+TEST_F(KeyOpsTest, TemplateKeysPatternMatching) {
 	const key_type base_key = "tpl_keys_test:";
 	const std::string pattern_prefix = base_key + "*";
 
@@ -222,9 +201,10 @@ TEST_F(key_operations_test, template_keys_pattern_matching) {
 	const key_type key_2 = base_key + "banana";
 	const key_type key_3 = "other_key:orange"; // Should NOT match
 
-	set_test_key(key_1);
-	set_test_key(key_2);
-	set_test_key(key_3); // Set key that doesn't match the pattern
+	tpl->ops_for_value().set(key_1, 1);
+	tpl->ops_for_value().set(key_2, 2);
+	tpl->ops_for_value().set(key_3, 3);
+	keys_to_clean.insert({key_1, key_2, key_3});
 
 	// 2. Execute keys using the template instance
 	std::unordered_set<key_type> found_keys;
@@ -235,32 +215,28 @@ TEST_F(key_operations_test, template_keys_pattern_matching) {
 	EXPECT_TRUE(found_keys.count(key_1)) << "Template KEYS should include key_1.";
 	EXPECT_TRUE(found_keys.count(key_2)) << "Template KEYS should include key_2.";
 	EXPECT_FALSE(found_keys.count(key_3)) << "Template KEYS should NOT include key_3.";
-
-	// 4. Cleanup
-	tpl->del({key_1, key_2, key_3});
 }
 
-// -----------------------------------------------------------------------------
-// Test Case 5: scan(cursor, pattern, count) - Testing redis_template implementation
-// -----------------------------------------------------------------------------
-
-// Test: Verify redis_template's scan() iterates through all matching keys, handling cursor and deserialization.
-TEST_F(key_operations_test, template_scan_iteration) {
+TEST_F(KeyOpsTest, TemplateScanIteration) {
 	const key_type base_key = "tpl_scan_test:";
+	const key_type non_matching_key = "non_matching_key";
 	const std::string pattern = base_key + "*";
 	constexpr int total_keys = 25; // Keys to create
+	keys_to_clean.insert("non_matching_key");
 
 	std::unordered_set<key_type> expected_keys;
 
 	// 1. Setup: Create the expected number of keys
 	for (int i = 0; i < total_keys; ++i) {
 		key_type key = base_key + std::to_string(i);
-		set_test_key(key);
+		tpl->ops_for_value().set(key, i);
+		keys_to_clean.insert(key);
 		expected_keys.insert(key);
 	}
 
 	// Set a key that should NOT be returned by the pattern
-	set_test_key("non_matching_key");
+	tpl->ops_for_value().set(non_matching_key, 1);
+	keys_to_clean.insert(non_matching_key);
 
 	// 2. Perform SCAN iteration
 	uint64_t cursor = 0;
@@ -292,35 +268,24 @@ TEST_F(key_operations_test, template_scan_iteration) {
 	/* Since scan_count is a hint and not an upper limit, any number of iteration_count greater than zero is reasonable.
 	 */
 	EXPECT_GE(iteration_count, 0) << "Template SCAN should take at least 1 iteration to complete the scan.";
-
-	// 4. Cleanup
-	std::vector<key_type> keys_to_delete;
-	keys_to_delete.reserve(expected_keys.size() + 1);
-	for (const auto &key: expected_keys) {
-		keys_to_delete.push_back(key);
-	}
-	keys_to_delete.emplace_back("non_matching_key");
-	tpl->del(keys_to_delete);
 }
 
-TEST_F(key_operations_test, type) {
+TEST_F(KeyOpsTest, type) {
 	// Test purpose: Verify that redis_template::type returns the correct string description for different data types
-	key_type string_key = "test_type_string";
-	key_type hash_key = "test_type_hash";
+	const key_type string_key = "test_type_string";
+	const key_type hash_key = "test_type_hash";
 
 	// 1) Create a string type key
 	ASSERT_TRUE(tpl->ops_for_value().set(string_key, 123));
+	keys_to_clean.insert(string_key);
 
 	// 2) Create a hash type key (insert one field)
 	ASSERT_TRUE(tpl->ops_for_hash().hset(hash_key, std::string("field1"), 1));
+	keys_to_clean.insert(hash_key);
 
 	// Verify the return value of type()
 	EXPECT_EQ(tpl->type(string_key), "string") << "Expected type string for key: " << string_key;
 	EXPECT_EQ(tpl->type(hash_key), "hash") << "Expected type hash for key: " << hash_key;
-
-	// Clean up
-	tpl->del(string_key);
-	tpl->del(hash_key);
 }
 
 int main(int argc, char **argv) {

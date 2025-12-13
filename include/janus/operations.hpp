@@ -173,6 +173,24 @@ namespace janus {
 		 */
 		virtual std::optional<V> rpop(const K &key) = 0;
 
+		/**
+		 * @brief Removes and gets up to `count` elements from the head (left) of a list. (Corresponds to LPOP with
+		 * count)
+		 * @param key The list key (K).
+		 * @param count The maximum number of elements to pop.
+		 * @return A vector of popped elements. Returns an empty vector if the key does not exist or the list is empty.
+		 */
+		virtual std::vector<V> lpop(const K &key, int count) = 0;
+
+		/**
+		 * @brief Removes and gets up to `count` elements from the tail (right) of a list. (Corresponds to RPOP with
+		 * count)
+		 * @param key The list key (K).
+		 * @param count The maximum number of elements to pop.
+		 * @return A vector of popped elements. Returns an empty vector if the key does not exist or the list is empty.
+		 */
+		virtual std::vector<V> rpop(const K &key, int count) = 0;
+
 		/* Read/Range Operations (LRANGE/LLEN) */
 
 		/**
@@ -190,6 +208,14 @@ namespace janus {
 		 * @return The length of the list. Returns 0 if the key does not exist.
 		 */
 		virtual long long llen(const K &key) = 0;
+
+		/**
+		 * @brief Gets an element from a list by its index. (Corresponds to LINDEX)
+		 * @param key The list key (K).
+		 * @param index The index of the element to get (0 is the first, -1 is the last).
+		 * @return The element (V) at the specified index, or std::optional<V> if the index is out of range.
+		 */
+		virtual std::optional<V> lindex(const K &key, long long index) = 0;
 	};
 
 	template<typename K, typename V>
