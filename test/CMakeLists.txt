@@ -59,6 +59,7 @@ foreach (TEST_FILE ${TEST_SOURCE_FILES})
     gtest_discover_tests(
         ${TEST_NAME}
         TIMEOUT ${CURRENT_TIMEOUT}
+        DISCOVERY_MODE PRE_TEST
     )
 
 endforeach ()
