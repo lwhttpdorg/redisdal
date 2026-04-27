@@ -1,22 +1,21 @@
 # 📚 Janus: C++ Redis Template Interface
 
 <!-- TOC -->
-* [📚 Janus: C++ Redis Template Interface](#-janus-c-redis-template-interface)
-  * [1. 🛠️ Prerequisites](#1--prerequisites)
-  * [2. ⚙️ Building the Library](#2--building-the-library)
-    * [2.1. Step 1: Clone the Repository](#21-step-1-clone-the-repository)
-    * [2.2. Step 2: Configure CMake](#22-step-2-configure-cmake)
-    * [2.3. Step 3: Compile](#23-step-3-compile)
-  * [3. ✅ Running Tests](#3--running-tests)
-    * [3.1. Enabling Tests](#31-enabling-tests)
-    * [3.2. Executing Tests with CTest](#32-executing-tests-with-ctest)
-  * [4. 🚀 Usage in Your Project](#4--usage-in-your-project)
-    * [4.1. Integration (Your `CMakeLists.txt`)](#41-integration-your-cmakeliststxt)
-    * [4.2. High-Level Operations](#42-high-level-operations)
-    * [4.3. Working with Custom Types for Hashes](#43-working-with-custom-types-for-hashes)
-    * [4.4. Comprehensive Example](#44-comprehensive-example)
-  * [5. 📜 License](#5--license)
-<!-- TOC -->
+- [1. 🛠️ Prerequisites](#1.-%F0%9F%9B%A0%EF%B8%8F-prerequisites)
+- [2. ⚙️ Building the Library](#2.-%E2%9A%99%EF%B8%8F-building-the-library)
+  - [2.1. Step 1: Clone the Repository](#2.1.-step-1%3A-clone-the-repository)
+  - [2.2. Step 2: Configure](#2.2.-step-2%3A-configure)
+  - [2.3. Step 3: Compile](#2.3.-step-3%3A-compile)
+- [3. ✅ Running Tests](#3.-%E2%9C%85-running-tests)
+  - [3.1. Enabling Tests](#3.1.-enabling-tests)
+  - [3.2. Executing Tests with](#3.2.-executing-tests-with)
+- [4. 🚀 Usage in Your Project](#4.-%F0%9F%9A%80-usage-in-your-project)
+  - [4.1. Integration (Your `CMakeLists.txt`)](#4.1.-integration-%28your-%60cmakelists.txt%60%29)
+  - [4.2. High-Level Operations](#4.2.-high-level-operations)
+  - [4.3. Working with Custom Types for Hashes](#4.3.-working-with-custom-types-for-hashes)
+  - [4.4. Comprehensive Example](#4.4.-comprehensive-example)
+- [5. 📜 License](#5.-%F0%9F%93%9C-license)
+<!-- /TOC -->
 
 Janus is a lightweight, modern C++ library designed to provide a high-level, template-based interface for interacting
 with the Redis key-value store. It abstracts away the low-level details of connection handling and data serialization,
@@ -30,13 +29,13 @@ projects to link against.
 To build and use Janus successfully, you must meet the following requirements:
 
 1. **C++ Standard**: The compiler must support the C++17 standard (e.g., GCC, Clang, MSVC).
-2. **CMake**: Version 3.11 or newer.
+2. **CMake/Meson**: Version 3.11+ or Meson 1.11+.
 3. **hiredis**: The underlying C client library for Redis.
 4. **Redis Server**: A running Redis instance is required for integration testing.
 
 ## 2. ⚙️ Building the Library
 
-Janus uses CMake for its build process. Please follow the standard out-of-source build steps.
+Janus uses `CMake` or `Meson` for its build process. Please follow the standard out-of-source build steps.
 
 ### 2.1. Step 1: Clone the Repository
 
@@ -45,35 +44,32 @@ git clone https://github.com/lwhttpdorg/janus.git
 cd janus
 ```
 
-### 2.2. Step 2: Configure CMake
+### 2.2. Step 2: Configure
 
 Create a separate build directory and execute CMake from within it.
 
-Windows(mingw64):
+**Windows(mingw64)**
 
 ```shell
 cmake -S . -B build -G "MinGW Makefiles" -DENABLE_JANUS_TEST=ON -DCMAKE_PREFIX_PATH="D:/OpenCode/hiredis"
 ```
 
-Linux:
+or:
+
+```shell
+meson setup build . -Denable_janus_test=true --pkg-config-path="D:/OpenCode/hiredis/lib/pkgconfig"
+```
+
+**Linux**
 
 ```shell
 cmake -S . -B build -G "Unix Makefiles" -DENABLE_JANUS_TEST=ON
 ```
 
-⚠️ Note on Dependencies (`hiredis`):
-
-Your `CMakeLists.txt` sets the `CMAKE_PREFIX_PATH` to help locate dependencies:
-
-```cmake
-set(CMAKE_PREFIX_PATH "D:/OpenCode/hiredis")
-```
-
-If your dependency libraries are installed in other locations, you **must** set the `CMAKE_PREFIX_PATH` variable during
-configuration to specify the installation paths for `hiredis` and other required libraries.
+or:
 
 ```shell
-cmake -DCMAKE_PREFIX_PATH="<Path/To/hiredis/install>;<Path/To/Other/Deps>"
+meson setup build . -Denable_janus_test=true
 ```
 
 ### 2.3. Step 3: Compile
@@ -82,6 +78,12 @@ Compile the project using your chosen build tool:
 
 ```shell
 cmake --build build --config=Debug -j $(nproc)
+```
+
+or:
+
+```shell
+meson compile -C build -j $(nproc)
 ```
 
 ## 3. ✅ Running Tests
@@ -96,7 +98,13 @@ To include the tests in your build, enable the option during CMake configuration
 cmake -S . -B build -DENABLE_JANUS_TEST=ON
 ```
 
-### 3.2. Executing Tests with CTest
+or:
+
+```shell
+meson setup build . -Denable_janus_test=true
+```
+
+### 3.2. Executing Tests with
 
 The tests are configured to read the Redis connection parameters from command-line environment variables. This allows
 for flexible testing against various Redis instances. The default connection is `127.0.0.1:6379`.
@@ -107,19 +115,37 @@ for flexible testing against various Redis instances. The default connection is 
 ctest --test-dir build --verbose
 ```
 
+or:
+
+```shell
+meson test -C build --verbose --print-errorlogs
+```
+
 📌 Using Custom Redis Host/Port:
 To use a remote Redis instance, set the `REDIS_HOST` environment variables before running `ctest`.
 
-Linux / macOS (Bash/Zsh):
+**Linux**
 
 ```shell
 REDIS_HOST="tcp://172.17.57.112:6379" ctest --test-dir build --verbose
 ```
 
-Windows (PowerShell):
+or:
+
+```shell
+REDIS_HOST="tcp://172.17.57.112:6379" meson test -C build
+```
+
+**Windows (PowerShell)**
 
 ```shell
 $env:REDIS_HOST="tcp://172.17.57.112:6379"; ctest --test-dir build --verbose
+```
+
+or:
+
+```shell
+$env:REDIS_HOST="tcp://172.17.57.112:6379"; meson test -C build
 ```
 
 ## 4. 🚀 Usage in Your Project
