@@ -9,11 +9,11 @@
 - [3. ✅ Running Tests](#3.-%E2%9C%85-running-tests)
   - [3.1. Enabling Tests](#3.1.-enabling-tests)
   - [3.2. Executing Tests with](#3.2.-executing-tests-with)
-- [4. 🚀 Usage in Your Project](#4.-%F0%9F%9A%80-usage-in-your-project)
-  - [4.1. Integration (Your `CMakeLists.txt`)](#4.1.-integration-%28your-%60cmakelists.txt%60%29)
-  - [4.2. High-Level Operations](#4.2.-high-level-operations)
-  - [4.3. Working with Custom Types for Hashes](#4.3.-working-with-custom-types-for-hashes)
-  - [4.4. Comprehensive Example](#4.4.-comprehensive-example)
+- [4. 🚀 Usage](#4.-%F0%9F%9A%80-usage)
+  - [4.1. Project Integration](#4.1.-project-integration)
+  - [4.2. Quick Start](#4.2.-quick-start)
+  - [4.3. Custom Type Serialization](#4.3.-custom-type-serialization)
+  - [4.4. Full Example](#4.4.-full-example)
 - [5. 📜 License](#5.-%F0%9F%93%9C-license)
 <!-- /TOC -->
 
@@ -21,15 +21,14 @@ Janus is a lightweight, modern C++ library designed to provide a high-level, tem
 with the Redis key-value store. It abstracts away the low-level details of connection handling and data serialization,
 allowing developers to focus on application logic using native C++ types (`K` and `V`) for keys and values.
 
-Janus is implemented as an Interface Library, meaning it primarily provides headers and API definitions for other
-projects to link against.
+Janus is built as a shared library that provides both headers and a compiled component for other projects to link against.
 
 ## 1. 🛠️ Prerequisites
 
 To build and use Janus successfully, you must meet the following requirements:
 
 1. **C++ Standard**: The compiler must support the C++17 standard (e.g., GCC, Clang, MSVC).
-2. **CMake/Meson**: Version 3.11+ or Meson 1.11+.
+2. **CMake/Meson**: CMake 3.10+ or Meson 1.1.0+.
 3. **hiredis**: The underlying C client library for Redis.
 4. **Redis Server**: A running Redis instance is required for integration testing.
 
@@ -148,48 +147,104 @@ or:
 $env:REDIS_HOST="tcp://172.17.57.112:6379"; meson test -C build
 ```
 
-## 4. 🚀 Usage in Your Project
+## 4. 🚀 Usage
 
-Janus is an `INTERFACE` library. You integrate it into your own CMake project by linking your targets against the
-`janus` target.
+You integrate Janus into your own CMake or Meson project by linking your targets against the `janus` library.
 
-### 4.1. Integration (Your `CMakeLists.txt`)
+### 4.1. Project Integration
 
-To use Janus in your project, you need to find it with `find_package` and then link your target against the `janus`
-interface library using `target_link_libraries`.
-
-Here is a complete example of a `CMakeLists.txt` file:
+**CMake (FetchContent)**
 
 ```cmake
 cmake_minimum_required(VERSION 3.11)
 project(my_app)
 
-# Set the C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
-FetchContent_Declare(janus GIT_REPOSITORY https://github.com/lwhttpdorg/janus.git GIT_TAG v1.2) # Or main for the latest
+FetchContent_Declare(janus
+  GIT_REPOSITORY https://github.com/lwhttpdorg/janus.git
+  GIT_TAG v1.2  # Or main for the latest
+)
 FetchContent_MakeAvailable(janus)
 
-# Add your application executable
 add_executable(my_app main.cpp)
-
-# Link your application to the Janus interface library.
-# This will automatically handle include directories and other dependencies like hiredis.
 target_link_libraries(my_app PRIVATE janus)
 ```
 
-By linking to `janus`, your project automatically inherits:
+**Meson (subproject / wrap)**
 
-- The necessary include directories (`target_include_directories`)
+Place a `janus.wrap` file in your `subprojects/` directory:
 
-### 4.2. High-Level Operations
+```ini
+[wrap-git]
+directory = janus
+url = https://github.com/lwhttpdorg/janus.git
+revision = v1.2
+```
+
+Then in your `meson.build`:
+
+```meson
+project('my_app', 'cpp', default_options: ['cpp_std=c++17'])
+
+janus_proj = subproject('janus')
+janus_dep = janus_proj.get_variable('janus_dep')
+
+executable('my_app', 'main.cpp', dependencies: janus_dep)
+```
+
+By depending on `janus`, your project automatically inherits:
+
+- The necessary include directories
+- The hiredis dependency
+
+### 4.2. Quick Start
 
 Janus provides the template layer (`redis_template`) and specialized operation classes (e.g., `list_operations`) that manage
 serialization and connection handling, enabling clean, type-safe Redis interactions:
 
-### 4.3. Working with Custom Types for Hashes
+```cpp
+#include "janus/janus.hpp"
+
+int main() {
+    // Connect to Redis (connection is established in the constructor)
+    janus::redis_connection conn("tcp://127.0.0.1:6379");
+
+    // string_redis_template is a convenience alias for redis_template<string, string>
+    // that manages its own serializer instances internally
+    janus::string_redis_template tpl(conn);
+
+    // String operations
+    tpl.ops_for_value().set("greeting", "hello world");
+    auto val = tpl.ops_for_value().get("greeting");  // std::optional<std::string>
+
+    // Hash operations
+    tpl.ops_for_hash().hset("user:1", {{"name", "Alice"}, {"role", "admin"}});
+    auto name = tpl.ops_for_hash().hget("user:1", "name");
+
+    // List operations
+    tpl.ops_for_list().rpush("queue", {"task1", "task2", "task3"});
+    auto task = tpl.ops_for_list().lpop("queue");
+
+    // Set operations
+    tpl.ops_for_set().sadd("tags", {"cpp", "redis", "janus"});
+    bool has_cpp = tpl.ops_for_set().sismember("tags", "cpp");
+
+    // Sorted set operations
+    tpl.ops_for_zset().zadd("leaderboard", {{"alice", 100.0}, {"bob", 85.5}});
+    auto top = tpl.ops_for_zset().zrevrange_withscores("leaderboard", 0, -1);
+
+    // Key-level operations live on redis_template directly
+    tpl.expire("greeting", 60);
+    tpl.del("greeting");
+
+    return 0;
+}
+```
+
+### 4.3. Custom Type Serialization
 
 A powerful feature of Janus is its ability to map custom C++ objects to Redis Hashes. Here’s how you can define a `User`
 object and a mapper to automatically handle its serialization.
@@ -221,7 +276,7 @@ public:
 
 Now you can use this mapper with `redis_template` to work with `User` objects directly.
 
-### 4.4. Comprehensive Example
+### 4.4. Full Example
 
 The following example demonstrates operations for all major data types, including the custom `User` hash.
 
