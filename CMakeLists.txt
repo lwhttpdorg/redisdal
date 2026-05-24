@@ -1,17 +1,17 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(janus VERSION 1.0)
+project(redisdal VERSION 1.0)
 
 if (CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
     message(FATAL_ERROR "In-source builds not allowed. Please create a separate build directory.")
 endif ()
 
-add_library(janus SHARED src/redis_connection.cpp)
-target_include_directories(janus
+add_library(redisdal SHARED src/redis_connection.cpp)
+target_include_directories(redisdal
     PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
-target_compile_features(janus PUBLIC cxx_std_17)
+target_compile_features(redisdal PUBLIC cxx_std_17)
 
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "The default is the Release version" FORCE)
@@ -43,13 +43,13 @@ if (NOT TARGET hiredis::hiredis)
     add_library(hiredis::hiredis ALIAS hiredis)
 endif ()
 
-target_link_libraries(janus PUBLIC hiredis::hiredis)
+target_link_libraries(redisdal PUBLIC hiredis::hiredis)
 
 # --- Installation Rules ---
 # install headers
 install(
-    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/janus
-    DESTINATION include # Installs to <prefix>/include/janus
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/redisdal
+    DESTINATION include # Installs to <prefix>/include/redisdal
 )
 
 # install libraries
@@ -58,9 +58,9 @@ install(
     DESTINATION lib
 )
 
-option(ENABLE_JANUS_TEST "Enable janus test" OFF)
+option(ENABLE_REDISDAL_TEST "Enable redisdal test" OFF)
 
-if (ENABLE_JANUS_TEST)
+if (ENABLE_REDISDAL_TEST)
     enable_testing()
     add_subdirectory(test)
 endif ()

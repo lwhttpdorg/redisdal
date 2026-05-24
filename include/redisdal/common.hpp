@@ -6,7 +6,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace janus {
+namespace redisdal {
     template<typename K>
     class scan_result {
     public:
@@ -115,4 +115,4 @@ namespace janus {
 
         std::optional<std::vector<cmd_reply>> array_value;
     };
-} // namespace janus
+} // namespace redisdal

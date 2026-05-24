@@ -1,8 +1,8 @@
-#include "janus/redis_connection.hpp"
-
 #include <regex>
 
-namespace janus {
+#include "redisdal/redis_connection.hpp"
+
+namespace redisdal {
 
     query_info parse_query_params(const std::string &query) {
         query_info info;
@@ -117,4 +117,4 @@ namespace janus {
 
         return config;
     }
-} // namespace janus
+} // namespace redisdal

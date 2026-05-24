@@ -17,12 +17,12 @@ find_package(Threads REQUIRED)
 # Create a static library for shared test code (e.g., test_env.cpp)
 # to avoid recompiling it for every test executable.
 set(COMMON_TEST_FILES test_env.cpp)
-add_library(janus_test_env STATIC ${COMMON_TEST_FILES})
-target_link_libraries(janus_test_env PRIVATE janus)
+add_library(redisdal_test_env STATIC ${COMMON_TEST_FILES})
+target_link_libraries(redisdal_test_env PRIVATE redisdal)
 
 # Define a common set of libraries required by all test executables.
-set(JANUS_TEST_LIBS
-    janus_test_env
+set(REDISDAL_TEST_LIBS
+    redisdal_test_env
     gtest_main
     Threads::Threads
 )
@@ -49,10 +49,10 @@ foreach (TEST_FILE ${TEST_SOURCE_FILES})
     target_link_libraries(
         ${TEST_NAME}
         PRIVATE
-        ${JANUS_TEST_LIBS}
+        ${REDISDAL_TEST_LIBS}
     )
 
-    # Add the project's root include directory for headers like "janus/janus.hpp".
+    # Add the project's root include directory for headers like "redisdal/redisdal.hpp".
     target_include_directories(${TEST_NAME} PRIVATE "${CMAKE_SOURCE_DIR}/include")
 
     # Discover all GTest cases in the executable and register them with CTest.

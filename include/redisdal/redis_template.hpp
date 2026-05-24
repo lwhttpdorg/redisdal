@@ -8,7 +8,7 @@
 #include "redis_operations.hpp"
 #include "serialization.hpp"
 
-namespace janus {
+namespace redisdal {
     class kv_connection;
 
     template<typename T>
@@ -341,4 +341,4 @@ namespace janus {
         // The serializer instance is owned by this class.
         string_serializer<std::string> kv_serializer;
     };
-} // namespace janus
+} // namespace redisdal

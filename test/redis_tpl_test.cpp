@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "janus/janus.hpp"
+#include "redisdal/redisdal.hpp"
 #include "test_env.hpp"
 
 // Define a custom object for hash mapping demonstration
@@ -39,16 +39,16 @@ public:
 int main() {
     // 1. Create the underlying connection using a URL from the environment
     std::string redis_url = get_redis_connection_url();
-    auto conn = std::make_shared<janus::redis_connection>(redis_url);
+    auto conn = std::make_shared<redisdal::redis_connection>(redis_url);
 
     // 2. Create serializers for different data types
-    auto string_serializer = std::make_shared<janus::string_serializer<std::string>>();
-    auto int_serializer = std::make_shared<janus::string_serializer<long long>>();
+    auto string_serializer = std::make_shared<redisdal::string_serializer<std::string>>();
+    auto int_serializer = std::make_shared<redisdal::string_serializer<long long>>();
 
     // Create a template for string keys and string values
-    janus::redis_template<std::string, std::string> string_tpl(*conn, *string_serializer, *string_serializer);
+    redisdal::redis_template<std::string, std::string> string_tpl(*conn, *string_serializer, *string_serializer);
     // Create a template for string keys and integer values
-    janus::redis_template<std::string, long long> int_tpl(*conn, *string_serializer, *int_serializer);
+    redisdal::redis_template<std::string, long long> int_tpl(*conn, *string_serializer, *int_serializer);
 
     // === String Operations ===
     std::cout << "\n--- String Operations ---" << std::endl;
@@ -130,7 +130,7 @@ int main() {
         conn->eval_sha1(sha1, {"my_hash"}, {"field3", "from_script"});
         std::cout << "EVALSHA successful." << std::endl;
     }
-    catch (const janus::no_script_error &e) {
+    catch (const redisdal::no_script_error &e) {
         // If Redis cleared its script cache, fall back to EVAL
         std::cerr << "NOSCRIPT error, falling back to EVAL: " << e.what() << std::endl;
         conn->eval(lua_script, {"my_hash"}, {"field3", "from_script"});

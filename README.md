@@ -1,4 +1,4 @@
-# 📚 Janus: C++ Redis Template Interface
+# 📚 RedisDAL: C++ Redis Template Interface
 
 <!-- TOC -->
 - [1. 🛠️ Prerequisites](#1.-%F0%9F%9B%A0%EF%B8%8F-prerequisites)
@@ -17,15 +17,15 @@
 - [5. 📜 License](#5.-%F0%9F%93%9C-license)
 <!-- /TOC -->
 
-Janus is a lightweight, modern C++ library designed to provide a high-level, template-based interface for interacting
+RedisDAL is a lightweight, modern C++ library designed to provide a high-level, template-based interface for interacting
 with the Redis key-value store. It abstracts away the low-level details of connection handling and data serialization,
 allowing developers to focus on application logic using native C++ types (`K` and `V`) for keys and values.
 
-Janus is built as a shared library that provides both headers and a compiled component for other projects to link against.
+RedisDAL is built as a shared library that provides both headers and a compiled component for other projects to link against.
 
 ## 1. 🛠️ Prerequisites
 
-To build and use Janus successfully, you must meet the following requirements:
+To build and use RedisDAL successfully, you must meet the following requirements:
 
 1. **C++ Standard**: The compiler must support the C++17 standard (e.g., GCC, Clang, MSVC).
 2. **CMake/Meson**: CMake 3.10+ or Meson 1.1.0+.
@@ -34,13 +34,13 @@ To build and use Janus successfully, you must meet the following requirements:
 
 ## 2. ⚙️ Building the Library
 
-Janus uses `CMake` or `Meson` for its build process. Please follow the standard out-of-source build steps.
+RedisDAL uses `CMake` or `Meson` for its build process. Please follow the standard out-of-source build steps.
 
 ### 2.1. Step 1: Clone the Repository
 
 ```shell
-git clone https://github.com/lwhttpdorg/janus.git
-cd janus
+git clone https://github.com/lwhttpdorg/redisdal.git
+cd redisdal
 ```
 
 ### 2.2. Step 2: Configure
@@ -50,25 +50,25 @@ Create a separate build directory and execute CMake from within it.
 **Windows(mingw64)**
 
 ```shell
-cmake -S . -B build -G "MinGW Makefiles" -DENABLE_JANUS_TEST=ON -DCMAKE_PREFIX_PATH="D:/OpenCode/hiredis"
+cmake -S . -B cmake-build -G "MinGW Makefiles" -DENABLE_REDISDAL_TEST=ON -DCMAKE_PREFIX_PATH="D:/OpenCode/hiredis"
 ```
 
 or:
 
 ```shell
-meson setup build . -Denable_janus_test=true --pkg-config-path="D:/OpenCode/hiredis/lib/pkgconfig"
+meson setup meson-build . -Denable_redisdal_test=true --pkg-config-path="D:/OpenCode/hiredis/lib/pkgconfig"
 ```
 
 **Linux**
 
 ```shell
-cmake -S . -B build -G "Unix Makefiles" -DENABLE_JANUS_TEST=ON
+cmake -S . -B cmake-build -G "Unix Makefiles" -DENABLE_REDISDAL_TEST=ON
 ```
 
 or:
 
 ```shell
-meson setup build . -Denable_janus_test=true
+meson setup meson-build . -Denable_redisdal_test=true
 ```
 
 ### 2.3. Step 3: Compile
@@ -76,31 +76,31 @@ meson setup build . -Denable_janus_test=true
 Compile the project using your chosen build tool:
 
 ```shell
-cmake --build build --config=Debug -j $(nproc)
+cmake --build cmake-build --config=Debug -j $(nproc)
 ```
 
 or:
 
 ```shell
-meson compile -C build -j $(nproc)
+meson compile -C meson-build -j $(nproc)
 ```
 
 ## 3. ✅ Running Tests
 
-Tests are optional and require a running Redis instance. They are enabled by the CMake option `ENABLE_JANUS_TEST`.
+Tests are optional and require a running Redis instance. They are enabled by the CMake option `ENABLE_REDISDAL_TEST`.
 
 ### 3.1. Enabling Tests
 
 To include the tests in your build, enable the option during CMake configuration:
 
 ```shell
-cmake -S . -B build -DENABLE_JANUS_TEST=ON
+cmake -S . -B cmake-build -DENABLE_REDISDAL_TEST=ON
 ```
 
 or:
 
 ```shell
-meson setup build . -Denable_janus_test=true
+meson setup meson-build . -Denable_redisdal_test=true
 ```
 
 ### 3.2. Executing Tests with
@@ -111,13 +111,13 @@ for flexible testing against various Redis instances. The default connection is 
 📌 Using Default Redis (127.0.0.1:6379):
 
 ```shell
-ctest --test-dir build --verbose
+ctest --test-dir cmake-build --verbose
 ```
 
 or:
 
 ```shell
-meson test -C build --verbose --print-errorlogs
+meson test -C meson-build --verbose --print-errorlogs
 ```
 
 📌 Using Custom Redis Host/Port:
@@ -149,7 +149,7 @@ $env:REDIS_HOST="tcp://172.17.57.112:6379"; meson test -C build
 
 ## 4. 🚀 Usage
 
-You integrate Janus into your own CMake or Meson project by linking your targets against the `janus` library.
+You integrate RedisDAL into your own CMake or Meson project by linking your targets against the `redisdal` library.
 
 ### 4.1. Project Integration
 
@@ -163,24 +163,24 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
-FetchContent_Declare(janus
-  GIT_REPOSITORY https://github.com/lwhttpdorg/janus.git
+FetchContent_Declare(redisdal
+  GIT_REPOSITORY https://github.com/lwhttpdorg/redisdal.git
   GIT_TAG v1.2  # Or main for the latest
 )
-FetchContent_MakeAvailable(janus)
+FetchContent_MakeAvailable(redisdal)
 
 add_executable(my_app main.cpp)
-target_link_libraries(my_app PRIVATE janus)
+target_link_libraries(my_app PRIVATE redisdal)
 ```
 
 **Meson (subproject / wrap)**
 
-Place a `janus.wrap` file in your `subprojects/` directory:
+Place a `redisdal.wrap` file in your `subprojects/` directory:
 
 ```ini
 [wrap-git]
-directory = janus
-url = https://github.com/lwhttpdorg/janus.git
+directory = redisdal
+url = https://github.com/lwhttpdorg/redisdal.git
 revision = v1.2
 ```
 
@@ -189,32 +189,32 @@ Then in your `meson.build`:
 ```meson
 project('my_app', 'cpp', default_options: ['cpp_std=c++17'])
 
-janus_proj = subproject('janus')
-janus_dep = janus_proj.get_variable('janus_dep')
+redisdal_proj = subproject('redisdal')
+redisdal_dep = redisdal_proj.get_variable('redisdal_dep')
 
-executable('my_app', 'main.cpp', dependencies: janus_dep)
+executable('my_app', 'main.cpp', dependencies: redisdal_dep)
 ```
 
-By depending on `janus`, your project automatically inherits:
+By depending on `redisdal`, your project automatically inherits:
 
 - The necessary include directories
 - The hiredis dependency
 
 ### 4.2. Quick Start
 
-Janus provides the template layer (`redis_template`) and specialized operation classes (e.g., `list_operations`) that manage
+RedisDAL provides the template layer (`redis_template`) and specialized operation classes (e.g., `list_operations`) that manage
 serialization and connection handling, enabling clean, type-safe Redis interactions:
 
 ```cpp
-#include "janus/janus.hpp"
+#include "redisdal/redisdal.hpp"
 
 int main() {
     // Connect to Redis (connection is established in the constructor)
-    janus::redis_connection conn("tcp://127.0.0.1:6379");
+    redisdal::redis_connection conn("tcp://127.0.0.1:6379");
 
     // string_redis_template is a convenience alias for redis_template<string, string>
     // that manages its own serializer instances internally
-    janus::string_redis_template tpl(conn);
+    redisdal::string_redis_template tpl(conn);
 
     // String operations
     tpl.ops_for_value().set("greeting", "hello world");
@@ -229,7 +229,7 @@ int main() {
     auto task = tpl.ops_for_list().lpop("queue");
 
     // Set operations
-    tpl.ops_for_set().sadd("tags", {"cpp", "redis", "janus"});
+    tpl.ops_for_set().sadd("tags", {"cpp", "redis", "redisdal"});
     bool has_cpp = tpl.ops_for_set().sismember("tags", "cpp");
 
     // Sorted set operations
@@ -246,7 +246,7 @@ int main() {
 
 ### 4.3. Custom Type Serialization
 
-A powerful feature of Janus is its ability to map custom C++ objects to Redis Hashes. Here’s how you can define a `User`
+A powerful feature of RedisDAL is its ability to map custom C++ objects to Redis Hashes. Here’s how you can define a `User`
 object and a mapper to automatically handle its serialization.
 
 ```cpp
@@ -287,7 +287,7 @@ The following example demonstrates operations for all major data types, includin
 #include <string>
 #include <vector>
 
-#include "janus/janus.hpp"
+#include "redisdal/redisdal.hpp"
 
 // Define a custom object for hash mapping demonstration
 struct User
@@ -323,16 +323,16 @@ int main()
 {
 	// 1. Create the underlying connection using a URL from the environment
 	std::string redis_url = "unix:///run/valkey/valkey.sock";
-	auto conn = std::make_shared<janus::redis_connection>(redis_url);
+	auto conn = std::make_shared<redisdal::redis_connection>(redis_url);
 
 	// 2. Create serializers for different data types
-	auto string_serializer = std::make_shared<janus::string_serializer<std::string>>();
-	auto int_serializer = std::make_shared<janus::string_serializer<long long>>();
+	auto string_serializer = std::make_shared<redisdal::string_serializer<std::string>>();
+	auto int_serializer = std::make_shared<redisdal::string_serializer<long long>>();
 
 	// Create a template for string keys and string values
-	janus::redis_template<std::string, std::string> string_tpl(*conn, *string_serializer, *string_serializer);
+	redisdal::redis_template<std::string, std::string> string_tpl(*conn, *string_serializer, *string_serializer);
 	// Create a template for string keys and integer values
-	janus::redis_template<std::string, long long> int_tpl(*conn, *string_serializer, *int_serializer);
+	redisdal::redis_template<std::string, long long> int_tpl(*conn, *string_serializer, *int_serializer);
 
 	// === String Operations ===
 	std::cout << "\n--- String Operations ---" << std::endl;
@@ -423,7 +423,7 @@ int main()
 		conn->eval_sha1(sha1, {"my_hash"}, {"field3", "from_script"});
 		std::cout << "EVALSHA successful." << std::endl;
 	}
-	catch (const janus::no_script_error &e)
+	catch (const redisdal::no_script_error &e)
 	{
 		// If Redis cleared its script cache, fall back to EVAL
 		std::cerr << "NOSCRIPT error, falling back to EVAL: " << e.what() << std::endl;

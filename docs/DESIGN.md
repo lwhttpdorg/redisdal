@@ -1,4 +1,4 @@
-# Janus Project Design Document
+# RedisDAL Project Design Document
 
 <!-- TOC -->
 - [1. Project Overview](#1.-project-overview)
@@ -17,7 +17,7 @@
 
 ## 1. Project Overview
 
-Janus is a C++ Redis client library based on hiredis, providing type-safe Redis operation interfaces.
+RedisDAL is a C++ Redis client library based on hiredis, providing type-safe Redis operation interfaces.
 
 ## 2. Architecture Design
 
@@ -277,15 +277,15 @@ classDiagram
 ### 3.1. Basic Usage
 
 ```cpp
-#include <janus/janus.hpp>
+#include <redisdal/redisdal.hpp>
 
 int main() {
     // Connection is established in the constructor
-    janus::redis_connection conn("redis://127.0.0.1:6379");
+    redisdal::redis_connection conn("redis://127.0.0.1:6379");
 
     // string_redis_template is a convenience alias for redis_template<string, string>
     // that manages its own string_serializer instances internally
-    janus::string_redis_template rt(conn);
+    redisdal::string_redis_template rt(conn);
 
     // String operations
     rt.ops_for_value().set("key", "value");
@@ -344,7 +344,7 @@ sequenceDiagram
 ```bash
 # CMake
 mkdir build && cd build
-cmake .. -DENABLE_JANUS_TEST=ON
+cmake .. -DENABLE_REDISDAL_TEST=ON
 make
 
 # Meson
@@ -365,8 +365,8 @@ meson test -C build
 
 ```mermaid
 graph LR
-    Janus[janus library] --> Hiredis[hiredis]
-    Test[test] --> Janus
+    RedisDAL[redisdal library] --> Hiredis[hiredis]
+    Test[test] --> RedisDAL
     Test --> GTest[GoogleTest]
     Test --> Threads[Threads]
 ```

@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "janus/janus.hpp"
+#include "redisdal/redisdal.hpp"
 
 #include "test_env.hpp"
 
@@ -20,16 +20,16 @@ protected:
     using member_type = std::string; // V
     using score_type = double;
 
-    std::unique_ptr<janus::redis_connection> conn;
-    std::unique_ptr<janus::redis_template<key_type, member_type>> tpl;
+    std::unique_ptr<redisdal::redis_connection> conn;
+    std::unique_ptr<redisdal::redis_template<key_type, member_type>> tpl;
     std::set<key_type> keys_to_clean;
-    janus::string_serializer<key_type> key_serializer{};
-    janus::string_serializer<member_type> value_serializer{};
+    redisdal::string_serializer<key_type> key_serializer{};
+    redisdal::string_serializer<member_type> value_serializer{};
 
     ZSetOpsTest() {
         std::string redis_url = get_redis_connection_url();
-        conn = std::make_unique<janus::redis_connection>(redis_url);
-        tpl = std::make_unique<janus::redis_template<key_type, member_type>>(*conn, key_serializer, value_serializer);
+        conn = std::make_unique<redisdal::redis_connection>(redis_url);
+        tpl = std::make_unique<redisdal::redis_template<key_type, member_type>>(*conn, key_serializer, value_serializer);
     }
 
     void TearDown() override {

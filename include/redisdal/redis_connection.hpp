@@ -11,7 +11,7 @@
 #include "exception.hpp"
 #include "kv_connection.hpp"
 
-namespace janus {
+namespace redisdal {
 
     static constexpr size_t NUM_KEYS_BUF_SIZE = 32;
     // Maximum number of keys allowed to be passed to EVAL/EVALSHA to avoid
@@ -1220,7 +1220,7 @@ namespace janus {
         // parse redis reply to cmd_reply
         // NOLINTNEXTLINE
         /**
-         * @brief Recursively parses a hiredis redisReply object into a janus::cmd_reply.
+         * @brief Recursively parses a hiredis redisReply object into a redisdal::cmd_reply.
          *
          * This function handles the translation between the C-style hiredis reply
          * and the C++ object-oriented cmd_reply, including nested arrays.
@@ -1255,9 +1255,9 @@ namespace janus {
             }
         }
 
-        // Map janus::reply_type enum to human-readable name
+        // Map redisdal::reply_type enum to human-readable name
         /**
-         * @brief Maps a janus::reply_type enum to its human-readable string name.
+         * @brief Maps a redisdal::reply_type enum to its human-readable string name.
          * @param t The reply_type enum value.
          * @return A C-style string representing the name (e.g., "string", "array").
          */
@@ -1342,4 +1342,4 @@ namespace janus {
     private:
         redis_context_ptr context;
     };
-} // namespace janus
+} // namespace redisdal

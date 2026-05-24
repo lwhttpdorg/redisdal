@@ -1,6 +1,6 @@
 #pragma once
 
-namespace janus {
+namespace redisdal {
     // --- Forward declarations for all operation interfaces ---
     template<typename K, typename V>
     class value_operations;
@@ -67,4 +67,4 @@ namespace janus {
          */
         virtual zset_operations<K, V> &ops_for_zset() = 0;
     };
-} // namespace janus
+} // namespace redisdal

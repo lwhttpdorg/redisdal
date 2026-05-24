@@ -38,7 +38,7 @@ rm -rf ${LINT_REPORT} ${BUILD_DIR}
 echo -e "✔️ ${GREEN}Cleanup complete.\n${NC}"
 
 echo -e "⏳ ${YELLOW}>>> [3/4] Configuring CMake...${NC}"
-cmake -DCMAKE_BUILD_TYPE=Debug -S . -B ${BUILD_DIR} -DENABLE_JANUS_TEST=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+cmake -DCMAKE_BUILD_TYPE=Debug -S . -B ${BUILD_DIR} -DENABLE_REDISDAL_TEST=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
 # Check if CMake configuration succeeded
 if [ $? -ne 0 ]; then

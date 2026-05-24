@@ -5,7 +5,7 @@
 #include <string>
 #include <type_traits>
 
-namespace janus {
+namespace redisdal {
     template<typename T>
     class serializer {
     public:
@@ -133,4 +133,4 @@ namespace janus {
             return string_serializable<T>::from_string(bytes);
         }
     };
-} // namespace janus
+} // namespace redisdal

@@ -1,15 +1,15 @@
 #include <gtest/gtest.h>
-#include <janus/serialization.hpp>
+#include <redisdal/serialization.hpp>
 #include <string>
 
 // Test fixture for serializer tests.
 class SerializerTest: public ::testing::Test {
 protected:
-    janus::string_serializer<std::string> string_serializer;
-    janus::string_serializer<int> int_serializer;
-    janus::string_serializer<long long> long_long_serializer;
-    janus::string_serializer<double> double_serializer;
-    janus::string_serializer<bool> bool_serializer;
+    redisdal::string_serializer<std::string> string_serializer;
+    redisdal::string_serializer<int> int_serializer;
+    redisdal::string_serializer<long long> long_long_serializer;
+    redisdal::string_serializer<double> double_serializer;
+    redisdal::string_serializer<bool> bool_serializer;
 };
 
 // Test case for std::string serialization.
@@ -47,7 +47,7 @@ TEST_F(SerializerTest, LongLongSerialization) {
 
 // Test case for unsigned long long serialization.
 TEST_F(SerializerTest, UnsignedLongLongSerialization) {
-    janus::string_serializer<unsigned long long> ull_serializer;
+    redisdal::string_serializer<unsigned long long> ull_serializer;
     unsigned long long original = 18446744073709551615ULL; // ULLONG_MAX
     std::string serialized = ull_serializer.serialize(original);
     EXPECT_EQ("18446744073709551615", serialized);

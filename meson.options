@@ -1,1 +1,1 @@
-option('enable_janus_test', type: 'boolean', value: false, description: 'Enable janus unit tests')
+option('enable_redisdal_test', type: 'boolean', value: false, description: 'Enable redisdal unit tests')

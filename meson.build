@@ -1,4 +1,4 @@
-project('janus', 'cpp',
+project('redisdal', 'cpp',
   version: '1.0',
   meson_version: '>=1.1.0',
   default_options: ['cpp_std=c++17']
@@ -17,23 +17,23 @@ if not hiredis_dep.found()
   hiredis_dep = declare_dependency(dependencies: hiredis_lib)
 endif
 
-janus_inc = include_directories('include')
+redisdal_inc = include_directories('include')
 
-janus_lib = library('janus',
+redisdal_lib = library('redisdal',
   'src/redis_connection.cpp',
-  include_directories: janus_inc,
+  include_directories: redisdal_inc,
   dependencies: hiredis_dep,
   install: true
 )
 
-janus_dep = declare_dependency(
-  include_directories: janus_inc,
-  link_with: janus_lib,
+redisdal_dep = declare_dependency(
+  include_directories: redisdal_inc,
+  link_with: redisdal_lib,
   dependencies: hiredis_dep
 )
 
-install_subdir('include/janus', install_dir: 'include')
+install_subdir('include/redisdal', install_dir: 'include')
 
-if get_option('enable_janus_test')
+if get_option('enable_redisdal_test')
   subdir('test')
 endif

@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace janus {
+namespace redisdal {
 
     /**
      * Exception thrown when a script is invoked with more keys than allowed.
@@ -47,4 +47,4 @@ namespace janus {
         }
     };
 
-} // namespace janus
+} // namespace redisdal

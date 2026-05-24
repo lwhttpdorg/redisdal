@@ -7,7 +7,7 @@
 
 #include "common.hpp"
 
-namespace janus {
+namespace redisdal {
     using string_scan_result = scan_result<std::string>;
 
     class kv_connection {
@@ -521,4 +521,4 @@ namespace janus {
          */
         virtual cmd_reply command(const std::string &cmd, const std::vector<std::string> &args) = 0;
     };
-} // namespace janus
+} // namespace redisdal

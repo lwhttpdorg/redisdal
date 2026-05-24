@@ -2,17 +2,17 @@ gtest_proj = subproject('gtest')
 gtest_main_dep = gtest_proj.get_variable('gtest_main_dep')
 thread_dep = dependency('threads')
 
-janus_test_env_lib = static_library('janus_test_env',
+redisdal_test_env_lib = static_library('redisdal_test_env',
   'test_env.cpp',
-  dependencies: janus_dep
+  dependencies: redisdal_dep
 )
 
-janus_test_env_dep = declare_dependency(
-  link_with: janus_test_env_lib
+redisdal_test_env_dep = declare_dependency(
+  link_with: redisdal_test_env_lib
 )
 
-janus_test_libs = [
-  janus_test_env_dep,
+redisdal_test_libs = [
+  redisdal_test_env_dep,
   gtest_main_dep,
   thread_dep
 ]
@@ -36,7 +36,7 @@ foreach f : test_sources
   exe = executable(test_name,
     f,
     include_directories: '../include',
-    dependencies: janus_test_libs,
+    dependencies: redisdal_test_libs,
   )
   
   test(test_name, exe, timeout: 10)

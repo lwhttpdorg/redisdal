@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "janus/janus.hpp"
+#include "redisdal/redisdal.hpp"
 
 #include "test_env.hpp"
 
@@ -21,16 +21,16 @@ protected:
     using hash_map_type = std::unordered_map<key_type, value_type>;
     using optional_hash_map_type = std::unordered_map<key_type, std::optional<value_type>>;
 
-    std::unique_ptr<janus::redis_connection> conn;
-    std::unique_ptr<janus::redis_template<key_type, value_type>> tpl;
+    std::unique_ptr<redisdal::redis_connection> conn;
+    std::unique_ptr<redisdal::redis_template<key_type, value_type>> tpl;
     std::set<key_type> keys_to_clean;
-    janus::string_serializer<key_type> key_serializer{};
-    janus::string_serializer<value_type> value_serializer{};
+    redisdal::string_serializer<key_type> key_serializer{};
+    redisdal::string_serializer<value_type> value_serializer{};
 
     HashOpsTest() {
         std::string redis_url = get_redis_connection_url();
-        conn = std::make_unique<janus::redis_connection>(redis_url);
-        tpl = std::make_unique<janus::redis_template<key_type, value_type>>(*conn, key_serializer, value_serializer);
+        conn = std::make_unique<redisdal::redis_connection>(redis_url);
+        tpl = std::make_unique<redisdal::redis_template<key_type, value_type>>(*conn, key_serializer, value_serializer);
     }
 
     void TearDown() override {

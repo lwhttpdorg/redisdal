@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace janus {
+namespace redisdal {
     template<typename K, typename V>
     class value_operations {
     public:
@@ -357,4 +357,4 @@ namespace janus {
         virtual std::vector<std::pair<V, double>> zrevrange_withscores(const K &key, long long start,
                                                                        long long stop) = 0;
     };
-} // namespace janus
+} // namespace redisdal

@@ -2,7 +2,7 @@
 
 #include "operations.hpp"
 
-namespace janus {
+namespace redisdal {
     template<typename K, typename V>
     class redis_template;
 
@@ -511,4 +511,4 @@ namespace janus {
         // A reference to the main template for accessing connection and serializers.
         redis_template<K, V> &tpl;
     };
-} // namespace janus
+} // namespace redisdal
