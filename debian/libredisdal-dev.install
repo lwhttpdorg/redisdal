@@ -1,0 +1,3 @@
+usr/include/redisdal/*
+usr/lib/*/cmake/Redisdal/*
+usr/lib/*/pkgconfig/redisdal.pc

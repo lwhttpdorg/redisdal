@@ -1,0 +1,15 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: redisdal
+Description: Redis helper library for C++ (redisdal)
+Version: @REDISDAL_VERSION@
+Requires:
+Libs: -L${libdir} -lredisdal
+Cflags: -I${includedir}
+
+# Notes:
+# - Configure this template from CMake using configure_file(redisdal.pc.in redisdal.pc)
+# - Install the generated redisdal.pc into ${libdir}/pkgconfig or ${exec_prefix}/lib/pkgconfig

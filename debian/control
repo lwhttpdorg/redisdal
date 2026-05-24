@@ -1,0 +1,23 @@
+Source: redisdal
+Section: libdevel
+Priority: optional
+Maintainer: Alex Sandro <dev@manjunos.com>
+Build-Depends: debhelper-compat (= 13),
+               cmake (>= 3.11)
+Standards-Version: 4.6.0
+Homepage: https://github.com/lwhttpdorg/redisdal
+Rules-Requires-Root: no
+
+# Runtime library package (contains ELF objects -> arch-dependent)
+Package: libredisdal
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Runtime library for redisdal
+ The shared library for redisdal (runtime files).
+
+# Development files (headers, -dev symlink, pkgconfig)
+Package: libredisdal-dev
+Architecture: any
+Depends: libredisdal (= ${binary:Version}), ${misc:Depends}
+Description: C++ Redis Template Interface (development files)
+ Header files and static/linker helpers for building against redisdal.

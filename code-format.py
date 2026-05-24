@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # encoding=UTF-8
+
 import os
 
 def fina_all_code_file(base: str):

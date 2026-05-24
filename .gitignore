@@ -44,7 +44,7 @@
 .idea
 
 # CMake build files
-cmake*
+cmake-*
 build
 
 # Exception: Do NOT ignore the primary CMake configuration file
@@ -52,6 +52,21 @@ build
 
 # VSCode
 .vscode
+
+# Meson
 subprojects/googletest-*/
 subprojects/packagecache/
 
+
+# deb build files
+debian/.debhelper
+debian/debhelper-build-stamp
+debian/files
+debian/libredisdal
+debian/libredisdal.debhelper.log
+debian/libredisdal-dev
+debian/libredisdal-dev.debhelper.log
+debian/libredisdal-dev.substvars
+debian/libredisdal.substvars
+debian/tmp
+obj-*
