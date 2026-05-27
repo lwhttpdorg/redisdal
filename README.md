@@ -1,20 +1,20 @@
 # 📚 RedisDAL: C++ Redis Template Interface
 
 <!-- TOC -->
-- [1. 🛠️ Prerequisites](#1.-%F0%9F%9B%A0%EF%B8%8F-prerequisites)
-- [2. ⚙️ Building the Library](#2.-%E2%9A%99%EF%B8%8F-building-the-library)
-  - [2.1. Step 1: Clone the Repository](#2.1.-step-1%3A-clone-the-repository)
-  - [2.2. Step 2: Configure](#2.2.-step-2%3A-configure)
-  - [2.3. Step 3: Compile](#2.3.-step-3%3A-compile)
-- [3. ✅ Running Tests](#3.-%E2%9C%85-running-tests)
-  - [3.1. Enabling Tests](#3.1.-enabling-tests)
-  - [3.2. Executing Tests with](#3.2.-executing-tests-with)
-- [4. 🚀 Usage](#4.-%F0%9F%9A%80-usage)
-  - [4.1. Project Integration](#4.1.-project-integration)
-  - [4.2. Quick Start](#4.2.-quick-start)
-  - [4.3. Custom Type Serialization](#4.3.-custom-type-serialization)
-  - [4.4. Full Example](#4.4.-full-example)
-- [5. 📜 License](#5.-%F0%9F%93%9C-license)
+- [1. 🛠️ Prerequisites](#1-prerequisites)
+- [2. ⚙️ Building the Library](#2-building-the-library)
+  - [2.1. Step 1: Clone the Repository](#21-step-1-clone-the-repository)
+  - [2.2. Step 2: Configure](#22-step-2-configure)
+  - [2.3. Step 3: Compile](#23-step-3-compile)
+- [3. ✅ Running Tests](#3-running-tests)
+  - [3.1. Enabling Tests](#31-enabling-tests)
+  - [3.2. Executing Tests with](#32-executing-tests-with)
+- [4. 🚀 Usage](#4-usage)
+  - [4.1. Project Integration](#41-project-integration)
+  - [4.2. Quick Start](#42-quick-start)
+  - [4.3. Custom Type Serialization](#43-custom-type-serialization)
+  - [4.4. Full Example](#44-full-example)
+- [5. 📜 License](#5-license)
 <!-- /TOC -->
 
 RedisDAL is a lightweight, modern C++ library designed to provide a high-level, template-based interface for interacting

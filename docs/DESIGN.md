@@ -1,18 +1,18 @@
 # RedisDAL Project Design Document
 
 <!-- TOC -->
-- [1. Project Overview](#1.-project-overview)
-- [2. Architecture Design](#2.-architecture-design)
-  - [2.1. Class Diagram](#2.1.-class-diagram)
-- [3. Usage Patterns](#3.-usage-patterns)
-  - [3.1. Basic Usage](#3.1.-basic-usage)
-  - [3.2. Template Method Pattern](#3.2.-template-method-pattern)
-- [4. Build System](#4.-build-system)
-  - [4.1. CMake vs Meson](#4.1.-cmake-vs-meson)
-  - [4.2. Build Commands](#4.2.-build-commands)
-- [5. Thread Safety](#5.-thread-safety)
-- [6. Dependencies](#6.-dependencies)
-  - [6.1. External Dependencies](#6.1.-external-dependencies)
+- [1. Project Overview](#1-project-overview)
+- [2. Architecture Design](#2-architecture-design)
+  - [2.1. Class Diagram](#21-class-diagram)
+- [3. Usage Patterns](#3-usage-patterns)
+  - [3.1. Basic Usage](#31-basic-usage)
+  - [3.2. Template Method Pattern](#32-template-method-pattern)
+- [4. Build System](#4-build-system)
+  - [4.1. CMake vs Meson](#41-cmake-vs-meson)
+  - [4.2. Build Commands](#42-build-commands)
+- [5. Thread Safety](#5-thread-safety)
+- [6. Dependencies](#6-dependencies)
+  - [6.1. External Dependencies](#61-external-dependencies)
 <!-- /TOC -->
 
 ## 1. Project Overview
