@@ -38,7 +38,7 @@ jobs:
         run: >
           cmake -B build
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-          -DENABLE_JANUS_TEST=ON
+          -DENABLE_REDISDAL_TEST=ON
           -S .
 
       - name: Build
@@ -47,4 +47,4 @@ jobs:
       - name: Test
         env:
           REDIS_HOST: tcp://127.0.0.1:6379
-        run: ctest --build-config ${{ matrix.build_type }} --test-dir build --output-on-failure
+        run: ctest --build-config ${{ matrix.build_type }} --test-dir build --output-on-failure --no-tests=error
