@@ -44,6 +44,9 @@ endif
 # Generate and install pkg-config file
 conf_data = configuration_data()
 conf_data.set('REDISDAL_VERSION', meson.project_version())
+conf_data.set('REDISDAL_PREFIX', get_option('prefix'))
+conf_data.set('REDISDAL_LIBDIR', join_paths('${prefix}', get_option('libdir')))
+conf_data.set('REDISDAL_INCLUDEDIR', join_paths('${prefix}', get_option('includedir')))
 redisdal_pc = configure_file(
     input: 'pkgconfig/redisdal.pc.in',
     output: 'redisdal.pc',

@@ -72,6 +72,14 @@ install(EXPORT redisdalTargets
 
 # Configure and install pkg-config file
 set(REDISDAL_VERSION ${PROJECT_VERSION})
+set(REDISDAL_PREFIX "${CMAKE_INSTALL_PREFIX}")
+foreach (dir IN ITEMS LIBDIR INCLUDEDIR)
+    if (IS_ABSOLUTE "${CMAKE_INSTALL_${dir}}")
+        set(REDISDAL_${dir} "${CMAKE_INSTALL_${dir}}")
+    else ()
+        set(REDISDAL_${dir} "\${prefix}/${CMAKE_INSTALL_${dir}}")
+    endif ()
+endforeach ()
 configure_file(${CMAKE_SOURCE_DIR}/pkgconfig/redisdal.pc.in ${CMAKE_BINARY_DIR}/redisdal.pc @ONLY)
 install(FILES ${CMAKE_BINARY_DIR}/redisdal.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 
