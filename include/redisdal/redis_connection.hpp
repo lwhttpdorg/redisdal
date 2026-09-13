@@ -129,21 +129,15 @@ namespace redisdal {
 
             // If authentication info provided, attempt AUTH
             if (!config.password.empty()) {
-                redis_reply_ptr auth_r = nullptr;
+                redis_reply_ptr auth_r;
                 if (!config.username.empty()) {
-                    auth_r = redis_reply_ptr{static_cast<redisReply *>(
-                        redisCommand(context.get(), "AUTH %s %s", config.username.c_str(), config.password.c_str()))};
+                    auth_r = exec_args({"AUTH", config.username, config.password});
                 }
                 else {
-                    auth_r = redis_reply_ptr{
-                        static_cast<redisReply *>(redisCommand(context.get(), "AUTH %s", config.password.c_str()))};
+                    auth_r = exec_args({"AUTH", config.password});
                 }
-                if (!auth_r) {
-                    throw std::runtime_error("AUTH command failed");
-                }
-                if (auth_r->type == REDIS_REPLY_ERROR) {
-                    const std::string err(auth_r->str, auth_r->len);
-                    throw std::runtime_error("AUTH failed: " + err);
+                if (!expect_ok(auth_r, "AUTH")) {
+                    throw std::runtime_error("AUTH failed: expected OK");
                 }
             }
             if (config.db != 0 && !expect_ok(exec_args({"SELECT", std::to_string(config.db)}), "SELECT")) {
@@ -152,7 +146,7 @@ namespace redisdal {
         }
 
         bool exists(const std::string &key) override {
-            const auto reply = exec("EXISTS %s", key.c_str());
+            const auto reply = exec_args({"EXISTS", key});
             return reply->type == REDIS_REPLY_INTEGER && reply->integer == 1;
         }
 
@@ -166,7 +160,7 @@ namespace redisdal {
          * @param keys An unordered_set to store the matching keys.
          */
         void keys(const std::string &pattern, std::unordered_set<std::string> &keys) override {
-            const auto reply = exec("KEYS %s", pattern.c_str());
+            const auto reply = exec_args({"KEYS", pattern});
             if (reply->type == REDIS_REPLY_ARRAY) {
                 for (size_t i = 0; i < reply->elements; ++i) {
                     if (reply->element[i]->type == REDIS_REPLY_STRING) {
@@ -191,7 +185,7 @@ namespace redisdal {
         string_scan_result scan(uint64_t cursor, const std::string &pattern, unsigned int count) override {
             string_scan_result result{0, {}};
             const std::string cursor_str = std::to_string(cursor);
-            const auto reply = exec("SCAN %s MATCH %s COUNT %u", cursor_str.c_str(), pattern.c_str(), count);
+            const auto reply = exec_args({"SCAN", cursor_str, "MATCH", pattern, "COUNT", std::to_string(count)});
             if (reply->type == REDIS_REPLY_ARRAY && reply->elements == 2) {
                 // First element is the new cursor
                 if (reply->element[0]->type == REDIS_REPLY_STRING) {
@@ -220,7 +214,7 @@ namespace redisdal {
         }
 
         std::string type(const std::string &key) override {
-            const auto reply = exec("TYPE %s", key.c_str());
+            const auto reply = exec_args({"TYPE", key});
             if (reply->type == REDIS_REPLY_STATUS) {
                 return {reply->str, reply->len};
             }
@@ -228,17 +222,17 @@ namespace redisdal {
         }
 
         bool expire(const std::string &key, int seconds) override {
-            const auto reply = exec("EXPIRE %s %d", key.c_str(), seconds);
+            const auto reply = exec_args({"EXPIRE", key, std::to_string(seconds)});
             return reply->type == REDIS_REPLY_INTEGER && reply->integer == 1;
         }
 
         bool pexpire(const std::string &key, int milliseconds) override {
-            const auto reply = exec("PEXPIRE %s %d", key.c_str(), milliseconds);
+            const auto reply = exec_args({"PEXPIRE", key, std::to_string(milliseconds)});
             return reply->type == REDIS_REPLY_INTEGER && reply->integer == 1;
         }
 
         int64_t ttl(const std::string &key) override {
-            const auto reply = exec("TTL %s", key.c_str());
+            const auto reply = exec_args({"TTL", key});
 
             if (reply->type != REDIS_REPLY_INTEGER) {
                 throw unexpected_reply_type_error("TTL", "integer", reply_type_name(reply->type));
@@ -247,7 +241,7 @@ namespace redisdal {
         }
 
         int64_t pttl(const std::string &key) override {
-            const auto reply = exec("PTTL %s", key.c_str());
+            const auto reply = exec_args({"PTTL", key});
 
             if (reply->type != REDIS_REPLY_INTEGER) {
                 throw unexpected_reply_type_error("PTTL", "integer", reply_type_name(reply->type));
@@ -256,7 +250,7 @@ namespace redisdal {
         }
 
         bool persist(const std::string &key) override {
-            const auto reply = exec("PERSIST %s", key.c_str());
+            const auto reply = exec_args({"PERSIST", key});
             if (reply->type != REDIS_REPLY_INTEGER) {
                 throw unexpected_reply_type_error("PERSIST", "integer", reply_type_name(reply->type));
             }
@@ -264,7 +258,7 @@ namespace redisdal {
         }
 
         std::string ping() override {
-            const auto reply = exec("PING");
+            const auto reply = exec_args({"PING"});
             if (reply->type == REDIS_REPLY_STATUS || reply->type == REDIS_REPLY_STRING) {
                 return {reply->str, reply->len};
             }
@@ -272,7 +266,7 @@ namespace redisdal {
         }
 
         std::string ping(const std::string &message) override {
-            const auto reply = exec("PING %s", message.c_str());
+            const auto reply = exec_args({"PING", message});
             if (reply->type == REDIS_REPLY_STATUS || reply->type == REDIS_REPLY_STRING) {
                 return {reply->str, reply->len};
             }
@@ -280,7 +274,7 @@ namespace redisdal {
         }
 
         long long del(const std::string &key) override {
-            const auto reply = exec("DEL %s", key.c_str());
+            const auto reply = exec_args({"DEL", key});
             if (reply->type != REDIS_REPLY_INTEGER) {
                 throw unexpected_reply_type_error("DEL", "integer", reply_type_name(reply->type));
             }
@@ -308,13 +302,13 @@ namespace redisdal {
         // ============================================================================
 
         bool set(const std::string &key, const std::string &value) override {
-            const auto reply = exec("SET %s %s", key.c_str(), value.c_str());
+            const auto reply = exec_args({"SET", key, value});
             return reply->type == REDIS_REPLY_STATUS && std::string(reply->str, reply->len) == "OK";
         }
 
         /* SET if Not eXists, Only set the key if it does not already exist */
         bool set_not_exists(const std::string &key, const std::string &value) override {
-            const auto reply = exec("SET %s %s NX", key.c_str(), value.c_str());
+            const auto reply = exec_args({"SET", key, value, "NX"});
 
             if (reply->type == REDIS_REPLY_STATUS) {
                 return std::string(reply->str, reply->len) == "OK";
@@ -327,18 +321,18 @@ namespace redisdal {
 
         /* Set the specified expire time, in seconds */
         bool set_ex(const std::string &key, const std::string &value, int seconds) override {
-            const auto reply = exec("SET %s %s EX %d", key.c_str(), value.c_str(), seconds);
+            const auto reply = exec_args({"SET", key, value, "EX", std::to_string(seconds)});
             return reply->type == REDIS_REPLY_STATUS && std::string(reply->str, reply->len) == "OK";
         }
 
         /* Set the specified expire time, in milliseconds */
         bool set_px(const std::string &key, const std::string &value, int milliseconds) override {
-            const auto reply = exec("SET %s %s PX %d", key.c_str(), value.c_str(), milliseconds);
+            const auto reply = exec_args({"SET", key, value, "PX", std::to_string(milliseconds)});
             return reply->type == REDIS_REPLY_STATUS && std::string(reply->str, reply->len) == "OK";
         }
 
         std::optional<std::string> get(const std::string &key) override {
-            const auto reply = exec("GET %s", key.c_str());
+            const auto reply = exec_args({"GET", key});
             if (reply->type == REDIS_REPLY_STRING) {
                 return std::string(reply->str, reply->len);
             }
@@ -349,7 +343,7 @@ namespace redisdal {
         }
 
         std::optional<std::string> getset(const std::string &key, const std::string &new_value) override {
-            const auto reply = exec("GETSET %s %s", key.c_str(), new_value.c_str());
+            const auto reply = exec_args({"GETSET", key, new_value});
             if (reply->type == REDIS_REPLY_STRING) {
                 return std::string(reply->str, reply->len);
             }
@@ -360,7 +354,7 @@ namespace redisdal {
         }
 
         long long incr(const std::string &key, long long delta) override {
-            const auto reply = exec("INCRBY %s %lld", key.c_str(), delta);
+            const auto reply = exec_args({"INCRBY", key, std::to_string(delta)});
             if (reply->type != REDIS_REPLY_INTEGER) {
                 throw unexpected_reply_type_error("INCRBY", "integer", reply_type_name(reply->type));
             }
@@ -368,7 +362,7 @@ namespace redisdal {
         }
 
         long long decr(const std::string &key, long long delta) override {
-            const auto reply = exec("DECRBY %s %lld", key.c_str(), delta);
+            const auto reply = exec_args({"DECRBY", key, std::to_string(delta)});
             if (reply->type != REDIS_REPLY_INTEGER) {
                 throw unexpected_reply_type_error("DECRBY", "integer", reply_type_name(reply->type));
             }
@@ -376,7 +370,7 @@ namespace redisdal {
         }
 
         long long append(const std::string &key, const std::string &value) override {
-            const auto reply = exec("APPEND %s %s", key.c_str(), value.c_str());
+            const auto reply = exec_args({"APPEND", key, value});
             if (reply->type != REDIS_REPLY_INTEGER) {
                 throw unexpected_reply_type_error("APPEND", "integer", reply_type_name(reply->type));
             }
@@ -388,7 +382,7 @@ namespace redisdal {
         // ============================================================================
 
         std::optional<std::string> hget(const std::string &key, const std::string &hash_key) override {
-            const auto reply = exec("HGET %s %s", key.c_str(), hash_key.c_str());
+            const auto reply = exec_args({"HGET", key, hash_key});
             if (reply->type == REDIS_REPLY_NIL) {
                 return std::nullopt;
             }
@@ -440,7 +434,7 @@ namespace redisdal {
         }
 
         bool hset(const std::string &key, const std::string &field, const std::string &value) override {
-            const auto reply = exec("HSET %s %s %s", key.c_str(), field.c_str(), value.c_str());
+            const auto reply = exec_args({"HSET", key, field, value});
             return reply->type == REDIS_REPLY_INTEGER && reply->integer >= 0;
         }
 
@@ -478,7 +472,7 @@ namespace redisdal {
          */
         std::unordered_map<std::string, std::string> hgetall(const std::string &key) override {
             std::unordered_map<std::string, std::string> result;
-            const auto reply = exec("HGETALL %s", key.c_str());
+            const auto reply = exec_args({"HGETALL", key});
             if (reply->type == REDIS_REPLY_ARRAY) {
                 for (size_t i = 0; i + 1 < reply->elements; i += 2) {
                     result.emplace(std::string(reply->element[i]->str, reply->element[i]->len),
@@ -496,7 +490,7 @@ namespace redisdal {
          */
         std::vector<std::string> hkeys(const std::string &key) override {
             std::vector<std::string> result;
-            const auto reply = exec("HKEYS %s", key.c_str());
+            const auto reply = exec_args({"HKEYS", key});
             if (reply->type == REDIS_REPLY_ARRAY) {
                 for (size_t i = 0; i < reply->elements; ++i) {
                     result.emplace_back(reply->element[i]->str, reply->element[i]->len);
@@ -513,7 +507,7 @@ namespace redisdal {
          */
         std::vector<std::string> hvals(const std::string &key) override {
             std::vector<std::string> result;
-            const auto reply = exec("HVALS %s", key.c_str());
+            const auto reply = exec_args({"HVALS", key});
             if (reply->type == REDIS_REPLY_ARRAY) {
                 for (size_t i = 0; i < reply->elements; ++i) {
                     result.emplace_back(reply->element[i]->str, reply->element[i]->len);
@@ -538,8 +532,7 @@ namespace redisdal {
                        std::unordered_map<std::string, std::string> &hash_map) override {
             uint64_t next_cursor = 0;
             const std::string cursor_str = std::to_string(cursor);
-            const auto reply =
-                exec("HSCAN %s %s MATCH %s COUNT %u", key.c_str(), cursor_str.c_str(), pattern.c_str(), count);
+            const auto reply = exec_args({"HSCAN", key, cursor_str, "MATCH", pattern, "COUNT", std::to_string(count)});
             if (reply->type == REDIS_REPLY_ARRAY && reply->elements == 2) {
                 // First element is the new cursor
                 if (reply->element[0]->type == REDIS_REPLY_STRING) {
@@ -572,7 +565,7 @@ namespace redisdal {
         }
 
         long long hdel(const std::string &key, const std::string &hash_key) override {
-            const auto reply = exec("HDEL %s %s", key.c_str(), hash_key.c_str());
+            const auto reply = exec_args({"HDEL", key, hash_key});
             if (reply->type != REDIS_REPLY_INTEGER) {
                 throw unexpected_reply_type_error("HDEL", "integer", reply_type_name(reply->type));
             }
@@ -634,7 +627,7 @@ namespace redisdal {
         }
 
         long long lpush(const std::string &key, const std::string &value) override {
-            const auto reply = exec("LPUSH %s %s", key.c_str(), value.c_str());
+            const auto reply = exec_args({"LPUSH", key, value});
             if (reply->type != REDIS_REPLY_INTEGER) {
                 throw unexpected_reply_type_error("LPUSH", "integer", reply_type_name(reply->type));
             }
@@ -642,7 +635,7 @@ namespace redisdal {
         }
 
         long long rpush(const std::string &key, const std::string &value) override {
-            const auto reply = exec("RPUSH %s %s", key.c_str(), value.c_str());
+            const auto reply = exec_args({"RPUSH", key, value});
             if (reply->type != REDIS_REPLY_INTEGER) {
                 throw unexpected_reply_type_error("RPUSH", "integer", reply_type_name(reply->type));
             }
@@ -675,7 +668,7 @@ namespace redisdal {
         }
 
         std::optional<std::string> lpop(const std::string &key) override {
-            const auto reply = exec("LPOP %s", key.c_str());
+            const auto reply = exec_args({"LPOP", key});
             if (reply->type == REDIS_REPLY_NIL) {
                 return std::nullopt;
             }
@@ -686,7 +679,7 @@ namespace redisdal {
         }
 
         std::optional<std::string> rpop(const std::string &key) override {
-            const auto reply = exec("RPOP %s", key.c_str());
+            const auto reply = exec_args({"RPOP", key});
             if (reply->type == REDIS_REPLY_NIL) {
                 return std::nullopt;
             }
@@ -697,7 +690,7 @@ namespace redisdal {
         }
 
         std::vector<std::string> lpop(const std::string &key, int count) override {
-            const auto reply = exec("LPOP %s %d", key.c_str(), count);
+            const auto reply = exec_args({"LPOP", key, std::to_string(count)});
             if (reply->type == REDIS_REPLY_NIL) {
                 return {};
             }
@@ -713,7 +706,7 @@ namespace redisdal {
         }
 
         std::vector<std::string> rpop(const std::string &key, int count) override {
-            const auto reply = exec("RPOP %s %d", key.c_str(), count);
+            const auto reply = exec_args({"RPOP", key, std::to_string(count)});
             if (reply->type == REDIS_REPLY_NIL) {
                 return {};
             }
@@ -741,7 +734,7 @@ namespace redisdal {
          */
         std::vector<std::string> lrange(const std::string &key, long long start, long long stop) override {
             std::vector<std::string> result;
-            const auto reply = exec("LRANGE %s %lld %lld", key.c_str(), start, stop);
+            const auto reply = exec_args({"LRANGE", key, std::to_string(start), std::to_string(stop)});
             if (reply->type == REDIS_REPLY_ARRAY) {
                 result.reserve(reply->elements);
                 for (size_t i = 0; i < reply->elements; ++i) {
@@ -757,7 +750,7 @@ namespace redisdal {
         }
 
         long long llen(const std::string &key) override {
-            const auto reply = exec("LLEN %s", key.c_str());
+            const auto reply = exec_args({"LLEN", key});
             if (reply->type != REDIS_REPLY_INTEGER) {
                 throw unexpected_reply_type_error("LLEN", "integer", reply_type_name(reply->type));
             }
@@ -765,7 +758,7 @@ namespace redisdal {
         }
 
         std::optional<std::string> lindex(const std::string &key, long long index) override {
-            const auto reply = exec("LINDEX %s %lld", key.c_str(), index);
+            const auto reply = exec_args({"LINDEX", key, std::to_string(index)});
             if (reply->type == REDIS_REPLY_NIL) {
                 return std::nullopt;
             }
@@ -837,7 +830,7 @@ namespace redisdal {
          */
         std::vector<std::string> smembers(const std::string &key) override {
             std::vector<std::string> result;
-            const auto reply = exec("SMEMBERS %s", key.c_str());
+            const auto reply = exec_args({"SMEMBERS", key});
             if (reply->type == REDIS_REPLY_ARRAY) {
                 result.reserve(reply->elements);
                 for (size_t i = 0; i < reply->elements; ++i) {
@@ -853,7 +846,7 @@ namespace redisdal {
         }
 
         long long scard(const std::string &key) override {
-            const auto reply = exec("SCARD %s", key.c_str());
+            const auto reply = exec_args({"SCARD", key});
             if (reply->type != REDIS_REPLY_INTEGER) {
                 throw unexpected_reply_type_error("SCARD", "integer", reply_type_name(reply->type));
             }
@@ -861,7 +854,7 @@ namespace redisdal {
         }
 
         bool sismember(const std::string &key, const std::string &member) override {
-            const auto reply = exec("SISMEMBER %s %s", key.c_str(), member.c_str());
+            const auto reply = exec_args({"SISMEMBER", key, member});
             if (reply->type != REDIS_REPLY_INTEGER) {
                 throw unexpected_reply_type_error("SISMEMBER", "integer", reply_type_name(reply->type));
             }
@@ -869,7 +862,7 @@ namespace redisdal {
         }
 
         std::optional<std::string> spop(const std::string &key) override {
-            const auto reply = exec("SPOP %s", key.c_str());
+            const auto reply = exec_args({"SPOP", key});
             if (reply->type == REDIS_REPLY_NIL) {
                 return std::nullopt;
             }
@@ -978,7 +971,7 @@ namespace redisdal {
         }
 
         std::optional<double> zscore(const std::string &key, const std::string &member) override {
-            const auto reply = exec("ZSCORE %s %s", key.c_str(), member.c_str());
+            const auto reply = exec_args({"ZSCORE", key, member});
             if (reply->type == REDIS_REPLY_NIL) {
                 return std::nullopt;
             }
@@ -997,7 +990,7 @@ namespace redisdal {
         std::vector<std::string> zrange(const std::string &key, long long start, long long stop) override {
             // ZRANGE key start stop
             std::vector<std::string> result;
-            const auto reply = exec("ZRANGE %s %lld %lld", key.c_str(), start, stop);
+            const auto reply = exec_args({"ZRANGE", key, std::to_string(start), std::to_string(stop)});
 
             if (reply->type == REDIS_REPLY_ARRAY) {
                 result.reserve(reply->elements);
@@ -1016,7 +1009,7 @@ namespace redisdal {
         std::vector<std::string> zrevrange(const std::string &key, long long start, long long stop) override {
             // ZREVRANGE key start stop
             std::vector<std::string> result;
-            const auto reply = exec("ZREVRANGE %s %lld %lld", key.c_str(), start, stop);
+            const auto reply = exec_args({"ZREVRANGE", key, std::to_string(start), std::to_string(stop)});
 
             if (reply->type == REDIS_REPLY_ARRAY) {
                 result.reserve(reply->elements);
@@ -1036,7 +1029,7 @@ namespace redisdal {
                                                                       long long stop) override {
             // ZRANGE key start stop WITHSCORES
             std::vector<std::pair<std::string, double>> result;
-            const auto reply = exec("ZRANGE %s %lld %lld WITHSCORES", key.c_str(), start, stop);
+            const auto reply = exec_args({"ZRANGE", key, std::to_string(start), std::to_string(stop), "WITHSCORES"});
 
             if (reply->type == REDIS_REPLY_ARRAY) {
                 if (reply->elements % 2 != 0) {
@@ -1073,7 +1066,7 @@ namespace redisdal {
                                                                          long long stop) override {
             // ZREVRANGE key start stop WITHSCORES
             std::vector<std::pair<std::string, double>> result;
-            const auto reply = exec("ZREVRANGE %s %lld %lld WITHSCORES", key.c_str(), start, stop);
+            const auto reply = exec_args({"ZREVRANGE", key, std::to_string(start), std::to_string(stop), "WITHSCORES"});
 
             if (reply->type == REDIS_REPLY_ARRAY) {
                 if (reply->elements % 2 != 0) {
@@ -1110,7 +1103,7 @@ namespace redisdal {
             std::string increment_str = string_serializable<double>::to_string(increment);
 
             // ZINCRBY key increment member
-            const auto reply = exec("ZINCRBY %s %s %s", key.c_str(), increment_str.c_str(), member.c_str());
+            const auto reply = exec_args({"ZINCRBY", key, increment_str, member});
 
             if (reply->type == REDIS_REPLY_STRING) {
                 try {
@@ -1641,31 +1634,6 @@ namespace redisdal {
                 default:
                     return "unknown";
             }
-        }
-
-        /**
-         * @brief Executes a Redis command with a printf-style format string.
-         * @param fmt The format string for the command.
-         * @param ... Arguments for the format string.
-         * @return A smart pointer to the Redis reply.
-         * @throws std::runtime_error if the command fails at the hiredis level.
-         * @throws redis_error if Redis returns an error reply.
-         */
-        redis_reply_ptr exec(const char *fmt, ...) const {
-            va_list ap;
-            va_start(ap, fmt);
-            // NOLINTNEXTLINE
-            redisReply *r = static_cast<redisReply *>(redisvCommand(context.get(), fmt, ap));
-            va_end(ap);
-            if (!r) {
-                throw std::runtime_error("Command failed");
-            }
-            if (r->type == REDIS_REPLY_ERROR) {
-                std::string err(r->str, r->len);
-                freeReplyObject(r);
-                throw redis_error(err);
-            }
-            return redis_reply_ptr(r);
         }
 
         /**

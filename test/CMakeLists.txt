@@ -30,6 +30,7 @@ set(REDISDAL_TEST_LIBS
 # Keep the test manifest explicit and aligned with test/meson.build so adding a
 # test requires updating both supported build systems.
 set(TEST_SOURCE_FILES
+    binary_args_test.cpp
     hash_ops_test.cpp
     key_ops_test.cpp
     list_ops_test.cpp

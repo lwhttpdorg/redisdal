@@ -13,6 +13,7 @@ redisdal_test_env_dep = declare_dependency(link_with: redisdal_test_env_lib)
 redisdal_test_libs = [redisdal_test_env_dep, gtest_main_dep, thread_dep]
 
 test_sources = [
+    'binary_args_test.cpp',
     'hash_ops_test.cpp',
     'key_ops_test.cpp',
     'list_ops_test.cpp',

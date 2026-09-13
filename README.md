@@ -270,6 +270,7 @@ accepted. Floating-point parsing also accepts infinity and NaN. Boolean encoding
 case-insensitive parsing and support for `1`/`0`), and `char` retains its numeric encoding.
 
 Connection URLs now apply `?db=N` after authentication; invalid or unavailable database indices fail construction.
+Keys, values, fields and members are sent with explicit byte lengths, including embedded NUL bytes.
 
 A powerful feature of RedisDAL is its ability to map custom C++ objects to Redis Hashes. Here’s how you can define a `User`
 object and a mapper to automatically handle its serialization.
