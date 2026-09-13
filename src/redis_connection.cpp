@@ -1,3 +1,4 @@
+#include <charconv>
 #include <regex>
 
 #include "redisdal/redis_connection.hpp"
@@ -16,7 +17,12 @@ namespace redisdal {
             std::string value = match[2].str();
 
             if (key == "db") {
-                info.db = std::stoul(value);
+                unsigned int db{};
+                const auto result = std::from_chars(value.data(), value.data() + value.size(), db);
+                if (result.ec != std::errc{} || result.ptr != value.data() + value.size()) {
+                    throw std::invalid_argument("Invalid Redis database index");
+                }
+                info.db = db;
             }
             else if (key == "password" || key == "auth") {
                 info.password = value;

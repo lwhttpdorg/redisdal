@@ -146,3 +146,33 @@ TEST_F(RedisConnectionTest, Ping) {
     std::string message = "hello world";
     EXPECT_EQ(tpl->ping(message), message);
 }
+
+TEST(ParseRedisUrlTest, RejectsInvalidDatabaseIndices) {
+    for (const char *db: {"", "-1", "1junk", "1.5", "4294967296", "18446744073709551616"}) {
+        EXPECT_THROW(redisdal::parse_redis_url(std::string("tcp://localhost?db=") + db), std::invalid_argument) << db;
+    }
+}
+
+TEST(RedisDatabaseTest, SelectsDatabaseBeforeExecutingCommands) {
+    const std::string url = get_redis_connection_url();
+    const std::string separator = url.find('?') == std::string::npos ? "?" : "&";
+    redisdal::redis_connection zero(url + separator + "db=0");
+    redisdal::redis_connection one(url + separator + "db=1");
+    const std::string key = "redisdal:regression:database-selection";
+    zero.set(key, "database-zero");
+    one.set(key, "database-one");
+    EXPECT_EQ(zero.get(key), "database-zero");
+    EXPECT_EQ(one.get(key), "database-one");
+    // Verify using an explicit SELECT as an independent oracle for the URL-selected DB.
+    zero.command("SELECT", {"1"});
+    EXPECT_EQ(zero.get(key), "database-one");
+    zero.del(key);
+    zero.command("SELECT", {"0"});
+    zero.del(key);
+}
+
+TEST(RedisDatabaseTest, RejectsDatabaseSelectionFailureDuringConstruction) {
+    const std::string url = get_redis_connection_url();
+    const std::string separator = url.find('?') == std::string::npos ? "?" : "&";
+    EXPECT_THROW(redisdal::redis_connection connection(url + separator + "db=4294967295"), redisdal::redis_error);
+}

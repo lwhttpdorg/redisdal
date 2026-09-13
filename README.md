@@ -269,6 +269,8 @@ with `std::invalid_argument`; values outside the target type's range throw `std:
 accepted. Floating-point parsing also accepts infinity and NaN. Boolean encoding remains `true`/`false` (with
 case-insensitive parsing and support for `1`/`0`), and `char` retains its numeric encoding.
 
+Connection URLs now apply `?db=N` after authentication; invalid or unavailable database indices fail construction.
+
 A powerful feature of RedisDAL is its ability to map custom C++ objects to Redis Hashes. Here’s how you can define a `User`
 object and a mapper to automatically handle its serialization.
 

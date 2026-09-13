@@ -123,7 +123,8 @@ namespace redisdal {
                     break;
             }
             if (!context || context->err) {
-                throw std::runtime_error("Redis connect failed: " + url);
+                throw std::runtime_error(std::string("Redis connect failed: ")
+                                         + (context ? context->errstr : "could not allocate context"));
             }
 
             // If authentication info provided, attempt AUTH
@@ -144,6 +145,9 @@ namespace redisdal {
                     const std::string err(auth_r->str, auth_r->len);
                     throw std::runtime_error("AUTH failed: " + err);
                 }
+            }
+            if (config.db != 0 && !expect_ok(exec_args({"SELECT", std::to_string(config.db)}), "SELECT")) {
+                throw std::runtime_error("SELECT failed: expected OK");
             }
         }
 
