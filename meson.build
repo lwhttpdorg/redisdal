@@ -42,13 +42,12 @@ if get_option('enable_redisdal_test')
 endif
 
 # Generate and install pkg-config file
+conf_data = configuration_data()
+conf_data.set('REDISDAL_VERSION', meson.project_version())
 redisdal_pc = configure_file(
     input: 'pkgconfig/redisdal.pc.in',
     output: 'redisdal.pc',
-    configuration: configuration_data(
-        'REDISDAL_VERSION',
-        meson.project_version(),
-    ),
+    configuration: conf_data,
 )
 install_data(
     redisdal_pc,
