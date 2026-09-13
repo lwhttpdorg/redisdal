@@ -78,6 +78,18 @@ TEST_F(ZSetOpsTest, Zincrby) {
     EXPECT_DOUBLE_EQ(*final_score, 115.5);
 }
 
+TEST_F(ZSetOpsTest, PreservesSmallScoresAndIncrements) {
+    const key_type key = "test_zset_precision";
+    keys_to_clean.insert(key);
+    auto &ops = tpl->ops_for_zset();
+    EXPECT_EQ(ops.zadd(key, {{"member", 1e-8}}), 1);
+    EXPECT_EQ(ops.zscore(key, "member"), 1e-8);
+    EXPECT_EQ(ops.zincrby(key, 1e-8, "member"), 2e-8);
+    const std::vector<std::pair<std::string, double>> expected{{"member", 2e-8}};
+    EXPECT_EQ(ops.zrange_withscores(key, 0, -1), expected);
+    EXPECT_EQ(ops.zrevrange_withscores(key, 0, -1), expected);
+}
+
 TEST_F(ZSetOpsTest, ZrangeAndZrevrange) {
     const key_type test_key = "test_zset_leaderboard";
     keys_to_clean.insert(test_key);

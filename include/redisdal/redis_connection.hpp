@@ -10,6 +10,7 @@
 
 #include "exception.hpp"
 #include "kv_connection.hpp"
+#include "serialization.hpp"
 
 namespace redisdal {
 
@@ -933,7 +934,7 @@ namespace redisdal {
             score_strings.reserve(members.size());
 
             for (const auto &member: members) {
-                score_strings.emplace_back(std::to_string(member.second));
+                score_strings.emplace_back(string_serializable<double>::to_string(member.second));
                 argv.push_back(score_strings.back().c_str());
                 argv_len.push_back(score_strings.back().size());
                 argv.push_back(member.first.c_str());
@@ -980,7 +981,7 @@ namespace redisdal {
 
             if (reply->type == REDIS_REPLY_STRING) {
                 try {
-                    return std::stod(std::string(reply->str, reply->len));
+                    return string_serializable<double>::from_string(std::string(reply->str, reply->len));
                 }
                 catch (const std::exception &) {
                     throw std::runtime_error("ZSCORE: failed to convert score to double");
@@ -1045,7 +1046,8 @@ namespace redisdal {
 
                     if (member_reply->type == REDIS_REPLY_STRING && score_reply->type == REDIS_REPLY_STRING) {
                         try {
-                            double score = std::stod(std::string(score_reply->str, score_reply->len));
+                            double score = string_serializable<double>::from_string(
+                                std::string(score_reply->str, score_reply->len));
                             result.emplace_back(std::string(member_reply->str, member_reply->len), score);
                         }
                         catch (const std::exception &) {
@@ -1081,7 +1083,8 @@ namespace redisdal {
 
                     if (member_reply->type == REDIS_REPLY_STRING && score_reply->type == REDIS_REPLY_STRING) {
                         try {
-                            double score = std::stod(std::string(score_reply->str, score_reply->len));
+                            double score = string_serializable<double>::from_string(
+                                std::string(score_reply->str, score_reply->len));
                             result.emplace_back(std::string(member_reply->str, member_reply->len), score);
                         }
                         catch (const std::exception &) {
@@ -1100,14 +1103,14 @@ namespace redisdal {
         }
 
         double zincrby(const std::string &key, double increment, const std::string &member) override {
-            std::string increment_str = std::to_string(increment);
+            std::string increment_str = string_serializable<double>::to_string(increment);
 
             // ZINCRBY key increment member
             const auto reply = exec("ZINCRBY %s %s %s", key.c_str(), increment_str.c_str(), member.c_str());
 
             if (reply->type == REDIS_REPLY_STRING) {
                 try {
-                    return std::stod(std::string(reply->str, reply->len));
+                    return string_serializable<double>::from_string(std::string(reply->str, reply->len));
                 }
                 catch (const std::exception &) {
                     throw std::runtime_error("ZINCRBY: failed to convert returned score to double");

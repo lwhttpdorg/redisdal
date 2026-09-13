@@ -1,4 +1,8 @@
+#include <cmath>
+#include <cstdint>
 #include <gtest/gtest.h>
+#include <limits>
+#include <locale>
 #include <redisdal/serialization.hpp>
 #include <string>
 
@@ -59,14 +63,13 @@ TEST_F(SerializerTest, UnsignedLongLongSerialization) {
 TEST_F(SerializerTest, DoubleSerialization) {
     double original = 3.14159;
     std::string serialized = double_serializer.serialize(original);
-    // Note: std::to_string has a fixed precision for double.
     double deserialized = double_serializer.deserialize(serialized);
     EXPECT_DOUBLE_EQ(original, deserialized);
 }
 
 // Test case for boolean serialization.
 TEST_F(SerializerTest, BoolSerialization) {
-    // Serialization should consistently produce "1" or "0".
+    // Preserve the existing boolean encoding.
     EXPECT_EQ(bool_serializer.serialize(true), "true");
     EXPECT_EQ(bool_serializer.serialize(false), "false");
 
@@ -85,4 +88,87 @@ TEST_F(SerializerTest, BoolSerialization) {
     EXPECT_THROW(bool_serializer.deserialize("yes"), std::invalid_argument);
     EXPECT_THROW(bool_serializer.deserialize("no"), std::invalid_argument);
     EXPECT_THROW(bool_serializer.deserialize("2"), std::invalid_argument);
+}
+
+template<typename T>
+class FloatingSerializerTest: public ::testing::Test {};
+
+using FloatingTypes = ::testing::Types<float, double, long double>;
+TYPED_TEST_SUITE(FloatingSerializerTest, FloatingTypes);
+
+TYPED_TEST(FloatingSerializerTest, RoundTripsWithoutLosingPrecision) {
+    redisdal::string_serializer<TypeParam> serializer;
+    for (const TypeParam value:
+         {TypeParam(0), TypeParam(-0.0), TypeParam(1e-8L), std::nextafter(TypeParam(1), TypeParam(2)),
+          std::numeric_limits<TypeParam>::lowest(), std::numeric_limits<TypeParam>::max(),
+          std::numeric_limits<TypeParam>::min(), std::numeric_limits<TypeParam>::denorm_min()}) {
+        const auto text = serializer.serialize(value);
+        const auto actual = serializer.deserialize(text);
+        EXPECT_EQ(actual, value) << text;
+        EXPECT_EQ(std::signbit(actual), std::signbit(value)) << text;
+    }
+}
+
+TYPED_TEST(FloatingSerializerTest, ValidatesCompleteInputAndRange) {
+    redisdal::string_serializer<TypeParam> serializer;
+    for (const char *text: {"", "1.25junk", "1.2.3", "1e", " 1", "1 ", "1,5", "+-1"}) {
+        EXPECT_THROW(serializer.deserialize(text), std::invalid_argument) << text;
+    }
+    EXPECT_THROW(serializer.deserialize(std::string("1.5\0tail", 8)), std::invalid_argument);
+    EXPECT_THROW(serializer.deserialize("1e99999"), std::out_of_range);
+    EXPECT_THROW(serializer.deserialize("1e-99999"), std::out_of_range);
+    EXPECT_EQ(serializer.deserialize("+1.5"), TypeParam(1.5));
+    EXPECT_TRUE(std::isnan(serializer.deserialize(serializer.serialize(std::numeric_limits<TypeParam>::quiet_NaN()))));
+    EXPECT_EQ(serializer.deserialize("inf"), std::numeric_limits<TypeParam>::infinity());
+    EXPECT_EQ(serializer.deserialize("-inf"), -std::numeric_limits<TypeParam>::infinity());
+}
+
+template<typename T>
+class IntegerSerializerTest: public ::testing::Test {};
+
+using IntegerTypes = ::testing::Types<signed char, unsigned char, char, short, unsigned short, int, unsigned int, long,
+                                      unsigned long, long long, unsigned long long, wchar_t, char16_t, char32_t>;
+TYPED_TEST_SUITE(IntegerSerializerTest, IntegerTypes);
+
+TYPED_TEST(IntegerSerializerTest, RoundTripsBoundsAndRejectsPartialInput) {
+    redisdal::string_serializer<TypeParam> serializer;
+    for (const TypeParam value: {std::numeric_limits<TypeParam>::lowest(), std::numeric_limits<TypeParam>::max()}) {
+        EXPECT_EQ(serializer.deserialize(serializer.serialize(value)), value);
+    }
+    for (const char *text: {"", "123junk", "1.0", " 1", "1 ", "+", "+-1", "++1"}) {
+        EXPECT_THROW(serializer.deserialize(text), std::invalid_argument) << text;
+    }
+    EXPECT_THROW(serializer.deserialize(std::string("1\0tail", 6)), std::invalid_argument);
+    EXPECT_THROW(serializer.deserialize("18446744073709551616"), std::out_of_range);
+    EXPECT_EQ(serializer.deserialize("+42"), TypeParam(42));
+    if constexpr (std::is_unsigned_v<TypeParam>) {
+        EXPECT_THROW(serializer.deserialize("-1"), std::invalid_argument);
+    }
+}
+
+TEST(SerializerBoundsTest, NarrowIntegerOverflowIsRejected) {
+    redisdal::string_serializer<uint8_t> byte;
+    redisdal::string_serializer<int8_t> signed_byte;
+    EXPECT_THROW(byte.deserialize("256"), std::out_of_range);
+    EXPECT_THROW(signed_byte.deserialize("128"), std::out_of_range);
+    EXPECT_THROW(signed_byte.deserialize("-129"), std::out_of_range);
+    EXPECT_EQ(redisdal::string_serializable<char>::to_string('A'), "65");
+}
+
+TEST(SerializerLocaleTest, DecimalPointDoesNotDependOnGlobalLocale) {
+    class comma_punctuation: public std::numpunct<char> {
+        char do_decimal_point() const override {
+            return ',';
+        }
+    };
+    struct locale_guard {
+        std::locale previous;
+        ~locale_guard() {
+            std::locale::global(previous);
+        }
+    } guard;
+    std::locale::global(std::locale(std::locale::classic(), new comma_punctuation));
+    redisdal::string_serializer<double> serializer;
+    EXPECT_EQ(serializer.serialize(1.5), "1.5");
+    EXPECT_EQ(serializer.deserialize("1.5"), 1.5);
 }

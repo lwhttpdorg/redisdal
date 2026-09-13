@@ -27,7 +27,8 @@ RedisDAL is built as a shared library that provides both headers and a compiled 
 
 To build and use RedisDAL successfully, you must meet the following requirements:
 
-1. **C++ Standard**: The compiler must support the C++17 standard (e.g., GCC, Clang, MSVC).
+1. **C++ Standard**: The compiler and standard library must support C++17, including floating-point
+   `std::to_chars` and `std::from_chars` (e.g., a recent GCC, Clang, or MSVC toolchain).
 2. **CMake/Meson**: CMake 3.10+ or Meson 1.1.0+.
 3. **hiredis**: The underlying C client library for Redis.
 4. **Redis Server**: A running Redis instance is required for integration testing.
@@ -258,6 +259,15 @@ int main() {
 ```
 
 ### 4.3. Custom Type Serialization
+
+Numeric serializers use locale-independent conversion and preserve floating-point round-trip precision, including
+`long double`. ZSet scores use the same conversion. Floating-point text may differ from the previous fixed six-decimal
+format; previously stored decimal values remain readable.
+
+Numeric input must be consumed in full: whitespace, trailing characters, and negative unsigned integers are rejected
+with `std::invalid_argument`; values outside the target type's range throw `std::out_of_range`. A leading `+` remains
+accepted. Floating-point parsing also accepts infinity and NaN. Boolean encoding remains `true`/`false` (with
+case-insensitive parsing and support for `1`/`0`), and `char` retains its numeric encoding.
 
 A powerful feature of RedisDAL is its ability to map custom C++ objects to Redis Hashes. Here’s how you can define a `User`
 object and a mapper to automatically handle its serialization.

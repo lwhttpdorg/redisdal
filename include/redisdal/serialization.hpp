@@ -1,6 +1,10 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
+#include <cctype>
+#include <charconv>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -33,21 +37,30 @@ namespace redisdal {
     template<typename T>
     class string_serializable<T, std::enable_if_t<std::is_arithmetic_v<T>>> {
     public:
-        // Use std::to_string for serialization
+        // Floating point formatting preserves the precision of the actual type and is locale-independent.
         static std::string to_string(const T &t) {
             if constexpr (std::is_same_v<T, bool>) {
                 return t ? "true" : "false";
             }
-            return std::to_string(t);
+            else if constexpr (std::is_floating_point_v<T>) {
+                std::array<char, std::numeric_limits<T>::max_digits10 + 32> buffer{};
+                const auto result = std::to_chars(buffer.data(), buffer.data() + buffer.size(), t,
+                                                  std::chars_format::general, std::numeric_limits<T>::max_digits10);
+                if (result.ec != std::errc{}) {
+                    throw std::runtime_error("Failed to serialize floating point value");
+                }
+                return std::string(buffer.data(), result.ptr);
+            }
+            else {
+                return std::to_string(t);
+            }
         }
 
-        // Use standard library functions for deserialization
+        // Parse the entire input in the target type, without locale-dependent whitespace or narrowing.
         static T from_string(const std::string &s) {
             if constexpr (std::is_same_v<T, bool>) {
-                std::string lower_s;
-                lower_s.resize(s.size());
+                std::string lower_s(s.size(), '\0');
                 std::transform(s.begin(), s.end(), lower_s.begin(), [](unsigned char c) { return std::tolower(c); });
-
                 if (lower_s == "true" || lower_s == "1") {
                     return true;
                 }
@@ -57,39 +70,37 @@ namespace redisdal {
                 throw std::invalid_argument(
                     "Invalid string format for boolean type. Expected 'true', 'false', '1', or '0'.");
             }
-            if constexpr (std::is_integral_v<T>) {
-                if constexpr (std::is_signed_v<T>) {
-                    if constexpr (sizeof(T) <= sizeof(int)) {
-                        return static_cast<T>(std::stoi(s));
-                    }
-                    else if constexpr (sizeof(T) <= sizeof(long)) {
-                        return static_cast<T>(std::stol(s));
-                    }
-                    else if constexpr (sizeof(T) <= sizeof(long long)) {
-                        return static_cast<T>(std::stoll(s));
+            else {
+                if (s.empty()) {
+                    throw std::invalid_argument("Empty numeric input");
+                }
+                const char *first = s.data();
+                const char *last = first + s.size();
+                // from_chars does not accept a leading '+', but the existing numeric serializers do.
+                if (*first == '+') {
+                    ++first;
+                    if (first == last || *first == '-' || *first == '+') {
+                        throw std::invalid_argument("Invalid numeric sign");
                     }
                 }
-                else {
-                    if constexpr (sizeof(T) <= sizeof(unsigned long)) {
-                        return static_cast<T>(std::stoul(s));
-                    }
-                    else if constexpr (sizeof(T) <= sizeof(unsigned long long)) {
-                        return static_cast<T>(std::stoull(s));
+                using parsed_type =
+                    std::conditional_t<std::is_floating_point_v<T>, T,
+                                       std::conditional_t<std::is_signed_v<T>, long long, unsigned long long>>;
+                parsed_type value{};
+                const auto result = std::from_chars(first, last, value);
+                if (result.ec == std::errc::invalid_argument || result.ptr != last) {
+                    throw std::invalid_argument("Invalid numeric input");
+                }
+                if (result.ec == std::errc::result_out_of_range) {
+                    throw std::out_of_range("Numeric input is out of range for the target type");
+                }
+                if constexpr (std::is_integral_v<T>) {
+                    if (value < std::numeric_limits<T>::lowest() || value > std::numeric_limits<T>::max()) {
+                        throw std::out_of_range("Numeric input is out of range for the target type");
                     }
                 }
+                return static_cast<T>(value);
             }
-            else if constexpr (std::is_floating_point_v<T>) {
-                if constexpr (std::is_same_v<T, float>) {
-                    return std::stof(s);
-                }
-                else if constexpr (std::is_same_v<T, double>) {
-                    return std::stod(s);
-                }
-                else if constexpr (std::is_same_v<T, long double>) {
-                    return std::stold(s);
-                }
-            }
-            throw std::invalid_argument("Unsupported arithmetic type for from_string");
         }
     };
 
