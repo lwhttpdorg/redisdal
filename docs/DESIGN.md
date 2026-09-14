@@ -7,6 +7,7 @@
     - [2.1.1. Core Architecture](#211-core-architecture)
     - [2.1.2. Operation Views](#212-operation-views)
   - [2.2. Design Patterns](#22-design-patterns)
+  - [2.3. Execution Contract](#23-execution-contract)
 - [3. Usage Patterns](#3-usage-patterns)
   - [3.1. Basic Usage](#31-basic-usage)
   - [3.2. Operation Delegation Flow](#32-operation-delegation-flow)
@@ -43,7 +44,23 @@ classDiagram
         <<interface>>
     }
 
-    class redis_connection
+    class redis_cmd_ops
+    class redis_client
+    class redis_connection {
+        <<interface>>
+        +get_fd() int
+    }
+    class sync_connection
+    class redis_executor {
+        <<interface>>
+        #cmd_exec(format, ...) cmd_reply
+        #cmd_execv(vector~string~) cmd_reply
+    }
+    class redis_async_executor {
+        <<interface>>
+        +fetch_reply() vector~cmd_reply~
+    }
+    class redis_pipeline
 
     class redis_operations~K, V~ {
         <<interface>>
@@ -53,7 +70,14 @@ classDiagram
     class string_redis_template
 
     string_serializer~T~ --|> serializer~T~: implements
-    redis_connection --|> kv_connection : implements
+    redis_client --|> kv_connection : implements
+    redis_executor <|-- redis_cmd_ops : virtual command layer
+    redis_cmd_ops <|-- redis_connection : connection contract
+    redis_connection <|-- sync_connection : synchronous implementation
+    redis_executor <|-- redis_async_executor : virtual deferred replies
+    redis_connection <|-- redis_pipeline : future
+    redis_async_executor <|-- redis_pipeline : future
+    redis_client *-- redis_connection : owns
     redis_operations~K, V~ <|-- redis_template~K, V~ : implements
     redis_template~K, V~ <|-- string_redis_template : extends
 
@@ -64,8 +88,19 @@ classDiagram
 - `redis_template<K, V>` implements the typed facade and owns the operation views; see
   [`redis_template.hpp`](../include/redisdal/redis_template.hpp).
 - `serializer<T>` converts typed keys and values to Redis strings; `string_serializer<T>` is its default implementation.
-- `kv_connection` is the string-based command boundary implemented by `redis_connection`; see
-  [`kv_connection.hpp`](../include/redisdal/kv_connection.hpp).
+- `kv_connection` remains the string-based client boundary; `redis_client` implements it and interprets replies.
+- `redis_cmd_ops` virtually inherits `redis_executor`. It contains argv construction for every currently supported
+  command family, including Stream, and returns raw `cmd_reply` values after invoking the protected
+  `cmd_exec()`/`cmd_execv()` transport hooks. The same command layer is inherited by synchronous and future Pipeline
+  connections.
+- `redis_connection` inherits `redis_cmd_ops` and adds `get_fd()`. It is the common connection base for the synchronous
+  implementation and a future Pipeline, without defining reconnection or connection-wait behavior.
+- `sync_connection` inherits `redis_connection`, owns the hiredis context, initializes AUTH/SELECT, preserves the
+  `exec()`/`execv()`/`exec_args()` transport family, and converts hiredis replies into owning `cmd_reply` values.
+- `redis_async_executor` also virtually inherits `redis_executor` and adds reply retrieval. A future `redis_pipeline`
+  inherits both `redis_connection` and `redis_async_executor`, but contains only one `redis_executor` base.
+- `redis_client(url)` owns a `sync_connection`; its injection constructor accepts another `redis_connection` for tests.
+  URL parsing lives in `redis_config.cpp`.
 - `string_redis_template` is the convenience specialization that owns its string serializer.
 
 #### 2.1.2. Operation Views
@@ -260,13 +295,58 @@ implementation rather than every inheritance or composition relationship in the 
 | Pattern / technique | Participants | Purpose |
 |---|---|---|
 | Facade | `redis_operations<K, V>`, `redis_template<K, V>` | Presents one typed entry point for key-level commands and the String, Hash, List, Set, Sorted Set, and Stream operation views. |
-| Strategy | `serializer<T>`, `string_serializer<T>` | Makes key and value conversion replaceable without changing Redis command implementations. |
-| Adapter | `kv_connection`, `redis_connection` | Adapts the hiredis C API and reply objects to the string-based connection interface consumed by the typed layer. |
+| Strategy | `serializer<T>`, `string_serializer<T>` | Makes serialization policy replaceable independently from command execution. |
+| Template Method | `redis_cmd_ops`, `redis_executor`, concrete connections | Command methods assemble argv and delegate the execution step to a concrete connection. |
+| Adapter | `sync_connection`, hiredis | Converts the hiredis C connection and reply tree to the library execution contract. |
 | Constructor Injection | `redis_template<K, V>` and its connection/serializer references | Decouples the facade from concrete connection and serialization implementations and makes substitutes usable in tests. The injected objects must outlive the facade. |
 | Composition and Delegation | `redis_template<K, V>`, `default_*_operations` | The facade owns one implementation per operation view. Each view serializes typed arguments and delegates the actual command to `kv_connection`. |
 
+The execution split applies the six design principles at the new boundary: single responsibility separates connection
+lifetime from command behavior; open/closed and dependency inversion allow a new execution strategy to implement
+`redis_executor`; Liskov substitution requires every executor to preserve the same reply and failure contract;
+interface segregation keeps formatted and vector execution in the small execution interface; and least knowledge keeps the
+typed facade unaware of hiredis resources. `kv_connection` stays intact for source compatibility.
+The GoF patterns above are used where they describe the implementation; the split does not require applying all 23 patterns.
+
 The operation views do not implement the Template Method pattern: no base class defines an algorithm skeleton whose
 steps are overridden by subclasses. Their interaction is composition and delegation, as shown in Section 3.2.
+
+### 2.3. Execution Contract
+
+The argument vector owns every argument, including the command name. Embedded NUL bytes, spaces and empty arguments
+retain their lengths. `cmd_execv()` borrows the vector for the duration of the call and returns an owning reply tree.
+For `sync_connection`, the returned value is the server reply. An implementation that also inherits
+`redis_async_executor` may queue the command and later return ordered replies from `fetch_reply()`.
+
+Following the reference hierarchy, a future Pipeline inherits `redis_connection` for command construction and fd
+access, plus `redis_async_executor` for retrieving deferred replies. Virtual inheritance on the two branches avoids the
+reference implementation's duplicate `redis_executor` base and makes conversion to the execution interface unambiguous.
+
+Executors preserve server ERROR and NIL replies as values, and throw on transport or protocol failures. They must not
+retry implicitly: a lost response can follow an already executed write. `redis_client` converts top-level ERROR replies to `redis_error`
+and EVALSHA NOSCRIPT to `no_script_error`; errors nested in raw or Lua arrays remain values. The existing typed facade
+continues to own script-cache reload behavior. `get_signed_integer()` exposes signed Redis integers; the existing
+`get_integer()` retains its unsigned representation for compatibility.
+
+Command-specific parsing validates structured reply shapes, including paired hash/score fields, scan cursors and stream
+entries.
+Malformed replies now fail explicitly instead of being silently skipped by some of the former decoders. Valid Redis
+replies retain existing semantics, including negative TTLs, NIL, duplicate stream fields and deleted pending entries.
+RESP2 remains the hiredis backend's supported protocol; this refactor does not add RESP3, pipelining or reconnection.
+
+`sync_connection` directly owns its hiredis context. Connection resources are released on destruction and constructor
+failure. `redis_client` owns the selected connection; copies are disabled and ownership can be moved.
+`redis_config::db` and `query_info::db` are renamed to `index`. Downstream code must rebuild and link the new library
+because the former inline connection implementation moved into separate compiled units.
+The duration parameters of `expire()`, `pexpire()`, `set_ex()`, and `set_px()` use `long long` throughout their public
+and command layers, so no layer narrows a Redis duration before constructing the command.
+The protected `exec()`, `execv()` and `exec_args()` helpers remain the hiredis transport family on `sync_connection`.
+A test or alternative backend implements `redis_connection` and is injected into `redis_client`.
+
+The `execution_test` target injects a scripted `redis_connection` into `redis_client` to check requests and decoding
+without Redis. `redis_connection_test` and the other integration tests exercise the hiredis implementation through
+public operations, including authentication/database selection,
+connection moves and replies that outlive the connection.
 
 ---
 
@@ -279,7 +359,7 @@ steps are overridden by subclasses. Their interaction is composition and delegat
 
 int main() {
     // Connection is established in the constructor
-    redisdal::redis_connection conn("redis://127.0.0.1:6379");
+    redisdal::redis_client conn("redis://127.0.0.1:6379");
 
     // string_redis_template is a convenience alias for redis_template<string, string>
     // that manages its own string_serializer instances internally
@@ -314,7 +394,9 @@ sequenceDiagram
     participant Client
     participant VO as default_value_operations
     participant RT as redis_template
-    participant RC as redis_connection (kv_connection)
+    participant Conn as redis_client
+    participant Exec as sync_connection / redis_connection
+    participant Redis
 
     Client->>RT: ops_for_value()
     RT-->>Client: value_operations& (VO)
@@ -325,8 +407,13 @@ sequenceDiagram
     RT-->>VO: serialized_value
     VO->>RT: get_connection()
     RT-->>VO: kv_connection&
-    VO->>RC: set(serialized_key, serialized_value)
-    RC-->>VO: bool (success)
+    VO->>Conn: set(serialized_key, serialized_value)
+    Conn->>Exec: cmd_execv(vector<string>)
+    Exec->>Redis: redisCommandArgv(args, lengths)
+    Redis-->>Exec: hiredis reply
+    Exec-->>Conn: owning cmd_reply
+    Conn->>Conn: validate and interpret reply
+    Conn-->>VO: bool (success)
     VO-->>Client: bool (success)
 ```
 
@@ -353,7 +440,7 @@ cmake .. -DENABLE_REDISDAL_TEST=ON
 make
 
 # Meson
-meson setup build -Denable-test=true
+meson setup build -Denable_redisdal_test=true
 meson compile -C build
 meson test -C build
 ```
@@ -362,4 +449,6 @@ meson test -C build
 
 ## 5. Thread Safety
 
-> ⚠️ **Note**: `redis_template` instances are **NOT thread-safe**. In multi-threaded scenarios, each thread should hold an independent instance, or protect shared instances with external locks.
+`redis_template`, `redis_cmd_ops` and `sync_connection` instances require external synchronization
+when shared. Each thread can instead own an independent connection and facade. A shared hiredis context still requires
+external synchronization.

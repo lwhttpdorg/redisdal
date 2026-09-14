@@ -88,7 +88,8 @@ meson compile -C meson-build -j $(nproc)
 
 ## 3. ✅ Running Tests
 
-Tests are optional and require a running Redis instance. They are enabled by the CMake option `ENABLE_REDISDAL_TEST`.
+Tests are optional and enabled by the CMake option `ENABLE_REDISDAL_TEST` or Meson option `enable_redisdal_test`.
+Integration tests require a running Redis instance; execution-boundary unit tests do not.
 
 ### 3.1. Enabling Tests
 
@@ -148,9 +149,31 @@ or:
 $env:REDIS_HOST="tcp://172.17.57.112:6379"; meson test -C build
 ```
 
+To run the execution-boundary tests without Redis:
+
+```shell
+./cmake-build/test/execution_test
+# Or:
+meson test -C meson-build execution_test --print-errorlogs
+```
+
 ## 4. 🚀 Usage
 
 You integrate RedisDAL into your own CMake or Meson project by linking your targets against the `redisdal` library.
+
+The execution hierarchy follows the reference project while removing its duplicate-executor diamond:
+`redis_cmd_ops` and `redis_async_executor` virtually inherit `redis_executor`; `redis_connection` inherits
+`redis_cmd_ops`; and `sync_connection` provides the hiredis implementation. A future `redis_pipeline` can inherit
+`redis_connection` and `redis_async_executor` while retaining one `redis_executor` base. `redis_client` owns a
+connection, implements the existing `kv_connection` API, and interprets replies. See the
+[execution contract](docs/DESIGN.md#23-execution-contract).
+
+After upgrading to this execution-layer split, rebuild downstream applications against the new headers and library.
+Call sites that constructed the former concrete `redis_connection` now construct `redis_client`; command method
+signatures are unchanged.
+`redis_config::db` and `query_info::db` are now named `index`. Rebuild downstream applications against the new headers.
+`expire()`, `pexpire()`, `set_ex()`, and `set_px()` duration parameters now use `long long` consistently across their
+public and command layers, avoiding narrowing at the former `int` boundary.
 
 ### 4.1. Project Integration
 
@@ -211,7 +234,7 @@ serialization and connection handling, enabling clean, type-safe Redis interacti
 
 int main() {
     // Connect to Redis (connection is established in the constructor)
-    redisdal::redis_connection conn("tcp://127.0.0.1:6379");
+    redisdal::redis_client conn("tcp://127.0.0.1:6379");
 
     // string_redis_template is a convenience alias for redis_template<string, string>
     // that manages its own serializer instances internally
@@ -269,7 +292,8 @@ with `std::invalid_argument`; values outside the target type's range throw `std:
 accepted. Floating-point parsing also accepts infinity and NaN. Boolean encoding remains `true`/`false` (with
 case-insensitive parsing and support for `1`/`0`), and `char` retains its numeric encoding.
 
-Connection URLs now apply `?db=N` after authentication; invalid or unavailable database indices fail construction.
+Connection URLs apply `?index=N` after authentication; invalid or unavailable database indices fail construction.
+The former `db` query parameter is rejected with a migration error.
 Keys, values, fields and members are sent with explicit byte lengths, including embedded NUL bytes.
 
 A powerful feature of RedisDAL is its ability to map custom C++ objects to Redis Hashes. Here’s how you can define a `User`
@@ -349,7 +373,7 @@ int main()
 {
 	// 1. Create the underlying connection using a URL from the environment
 	std::string redis_url = "unix:///run/valkey/valkey.sock";
-	auto conn = std::make_shared<redisdal::redis_connection>(redis_url);
+	auto conn = std::make_shared<redisdal::redis_client>(redis_url);
 
 	// 2. Create serializers for different data types
 	auto string_serializer = std::make_shared<redisdal::string_serializer<std::string>>();
