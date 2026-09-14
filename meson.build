@@ -23,7 +23,11 @@ redisdal_inc = include_directories('include')
 
 redisdal_lib = library(
     'redisdal',
-    'src/redis_connection.cpp',
+    'src/cmd_reply.cpp',
+    'src/redis_client.cpp',
+    'src/redis_config.cpp',
+    'src/redis_cmd_ops.cpp',
+    'src/sync_connection.cpp',
     include_directories: redisdal_inc,
     dependencies: hiredis_dep,
     install: true,

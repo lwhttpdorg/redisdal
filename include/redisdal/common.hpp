@@ -1,8 +1,10 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -141,6 +143,9 @@ namespace redisdal {
         static cmd_reply make_integer(uint64_t value) {
             return cmd_reply(value);
         }
+        static cmd_reply make_signed_integer(int64_t value) {
+            return cmd_reply(static_cast<uint64_t>(value));
+        }
         static cmd_reply make_double(double value) {
             return cmd_reply(value);
         }
@@ -170,6 +175,16 @@ namespace redisdal {
         [[nodiscard]] const std::optional<uint64_t> &get_integer() const {
             return int_value;
         }
+        /** Signed Redis integer view; get_integer() retains its legacy unsigned representation. */
+        [[nodiscard]] std::optional<int64_t> get_signed_integer() const {
+            if (!int_value) {
+                return std::nullopt;
+            }
+            if (*int_value <= static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+                return static_cast<int64_t>(*int_value);
+            }
+            return -1 - static_cast<int64_t>(std::numeric_limits<uint64_t>::max() - *int_value);
+        }
         [[nodiscard]] const std::optional<double> &get_double() const {
             return double_value;
         }
@@ -189,6 +204,27 @@ namespace redisdal {
         }
 
     private:
+        friend class redis_cmd_ops;
+        friend class redis_client;
+
+        [[nodiscard]] const char *type_name() const;
+        [[nodiscard]] const std::string &as_text(const std::string &command) const;
+        [[nodiscard]] const std::string &as_string(const std::string &command) const;
+        [[nodiscard]] const std::string &as_status(const std::string &command) const;
+        [[nodiscard]] const std::vector<cmd_reply> &as_array(const std::string &command) const;
+        [[nodiscard]] int64_t as_integer(const std::string &command) const;
+        [[nodiscard]] bool status_is_ok(const std::string &command) const;
+        [[nodiscard]] std::optional<std::string> optional_string(const std::string &command) const;
+        [[nodiscard]] std::vector<std::string> strings(const std::string &command) const;
+        [[nodiscard]] std::unordered_map<std::string, std::string> hash(const std::string &command) const;
+        [[nodiscard]] std::optional<double> optional_score(const std::string &command) const;
+        [[nodiscard]] std::vector<std::pair<std::string, double>> scores(const std::string &command) const;
+        [[nodiscard]] uint64_t scan_cursor(const std::string &command) const;
+        [[nodiscard]] std::vector<string_stream_entry> stream_entries(const std::string &command) const;
+        [[nodiscard]] std::vector<string_stream_batch> stream_batches(const std::string &command) const;
+        [[nodiscard]] cmd_reply or_throw() &&;
+        void throw_if_error() const;
+
         reply_type type;
 
         std::optional<std::string> str_value;

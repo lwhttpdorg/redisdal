@@ -43,8 +43,16 @@ namespace redisdal {
      */
     class redis_error: public std::runtime_error {
     public:
-        explicit redis_error(const std::string &msg) : std::runtime_error(std::string("Redis error: ") + msg) {
+        explicit redis_error(const std::string &msg) :
+            std::runtime_error(std::string("Redis error: ") + msg), message(msg) {
         }
+
+        [[nodiscard]] const std::string &redis_message() const noexcept {
+            return message;
+        }
+
+    private:
+        std::string message;
     };
 
 } // namespace redisdal

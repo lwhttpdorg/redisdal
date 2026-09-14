@@ -9,7 +9,7 @@
 
 class BinaryArgsTest: public testing::Test {
 protected:
-    redisdal::redis_connection conn{get_redis_connection_url()};
+    redisdal::redis_client conn{get_redis_connection_url()};
     std::string prefix;
     std::string key;
     const std::string value{"value\0tail", 10};

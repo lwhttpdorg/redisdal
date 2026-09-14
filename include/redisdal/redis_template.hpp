@@ -5,6 +5,7 @@
 #include <unordered_map>
 
 #include "common.hpp"
+#include "exception.hpp"
 #include "redis_operations.hpp"
 #include "serialization.hpp"
 
@@ -31,7 +32,7 @@ namespace redisdal {
         /* Set expiration for a key */
         virtual bool expire(const K &key, long long seconds) = 0;
         /* Set expiration for a key in milliseconds */
-        virtual bool pexpire(const K &key, int milliseconds) = 0;
+        virtual bool pexpire(const K &key, long long milliseconds) = 0;
         /* Delete a single key */
         virtual long long del(const K &key) = 0;
         /* Delete multiple keys */
@@ -147,7 +148,7 @@ namespace redisdal {
         }
 
         /** @copydoc redis_operations::pexpire */
-        bool pexpire(const K &key, int milliseconds) override {
+        bool pexpire(const K &key, long long milliseconds) override {
             auto serialized_key = this->serialize_key(key);
             return connection.pexpire(serialized_key, milliseconds);
         }

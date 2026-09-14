@@ -15,14 +15,14 @@ protected:
     using key_type = std::string;
     using value_type = std::string;
 
-    std::unique_ptr<redisdal::redis_connection> conn;
+    std::unique_ptr<redisdal::redis_client> conn;
     std::unique_ptr<redisdal::redis_template<key_type, value_type>> tpl;
     std::set<key_type> keys_to_clean;
     redisdal::string_serializer<key_type> key_serializer{};
     redisdal::string_serializer<value_type> value_serializer{};
 
     StreamOpsTest() {
-        conn = std::make_unique<redisdal::redis_connection>(get_redis_connection_url());
+        conn = std::make_unique<redisdal::redis_client>(get_redis_connection_url());
         tpl = std::make_unique<redisdal::redis_template<key_type, value_type>>(*conn, key_serializer, value_serializer);
     }
 

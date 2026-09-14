@@ -16,7 +16,7 @@ protected:
     using key_type = std::string;
     using value_type = unsigned long long;
 
-    std::unique_ptr<redisdal::redis_connection> conn;
+    std::unique_ptr<redisdal::redis_client> conn;
     std::unique_ptr<redisdal::redis_template<key_type, value_type>> tpl;
     std::set<key_type> keys_to_clean;
     redisdal::string_serializer<key_type> key_serializer{};
@@ -24,7 +24,7 @@ protected:
 
     LuaAndRawCmdTest() {
         std::string redis_url = get_redis_connection_url();
-        conn = std::make_unique<redisdal::redis_connection>(redis_url);
+        conn = std::make_unique<redisdal::redis_client>(redis_url);
         tpl = std::make_unique<redisdal::redis_template<key_type, value_type>>(*conn, key_serializer, value_serializer);
     }
 

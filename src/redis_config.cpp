@@ -1,7 +1,7 @@
 #include <charconv>
 #include <regex>
 
-#include "redisdal/redis_connection.hpp"
+#include "redisdal/redis_config.hpp"
 
 namespace redisdal {
 
@@ -16,13 +16,16 @@ namespace redisdal {
             std::string key = match[1].str();
             std::string value = match[2].str();
 
-            if (key == "db") {
-                unsigned int db{};
-                const auto result = std::from_chars(value.data(), value.data() + value.size(), db);
+            if (key == "index") {
+                unsigned int index{};
+                const auto result = std::from_chars(value.data(), value.data() + value.size(), index);
                 if (result.ec != std::errc{} || result.ptr != value.data() + value.size()) {
                     throw std::invalid_argument("Invalid Redis database index");
                 }
-                info.db = db;
+                info.index = index;
+            }
+            else if (key == "db") {
+                throw std::invalid_argument("Redis URL parameter 'db' was renamed to 'index'");
             }
             else if (key == "password" || key == "auth") {
                 info.password = value;
@@ -61,7 +64,7 @@ namespace redisdal {
         if (query_pos != std::string::npos) {
             std::string query_str = remaining_url.substr(query_pos + 1);
             query_info q_info = parse_query_params(query_str);
-            config.db = q_info.db;
+            config.index = q_info.index;
             if (!q_info.username.empty()) {
                 config.username = q_info.username;
             }

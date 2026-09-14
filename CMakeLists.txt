@@ -7,7 +7,13 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
 endif ()
 
 # --- Library Definition ---
-add_library(redisdal SHARED src/redis_connection.cpp)
+add_library(redisdal SHARED
+    src/cmd_reply.cpp
+    src/redis_client.cpp
+    src/redis_config.cpp
+    src/redis_cmd_ops.cpp
+    src/sync_connection.cpp
+)
 target_include_directories(redisdal
     PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

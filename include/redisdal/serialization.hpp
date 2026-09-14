@@ -40,6 +40,8 @@ namespace redisdal {
         // Floating point formatting preserves the precision of the actual type and is locale-independent.
         static std::string to_string(const T &t) {
             if constexpr (std::is_same_v<T, bool>) {
+                // Emit one canonical text form while accepting the legacy numeric
+                // forms on input for backward-compatible deserialization.
                 return t ? "true" : "false";
             }
             else if constexpr (std::is_floating_point_v<T>) {

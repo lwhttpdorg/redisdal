@@ -39,7 +39,7 @@ public:
 int main() {
     // 1. Create the underlying connection using a URL from the environment
     std::string redis_url = get_redis_connection_url();
-    auto conn = std::make_shared<redisdal::redis_connection>(redis_url);
+    auto conn = std::make_shared<redisdal::redis_client>(redis_url);
 
     // 2. Create serializers for different data types
     auto string_serializer = std::make_shared<redisdal::string_serializer<std::string>>();

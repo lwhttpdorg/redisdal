@@ -61,7 +61,7 @@ namespace redisdal {
          * @param seconds The timeout in seconds.
          * @return true if the timeout was set, false otherwise.
          */
-        virtual bool expire(const std::string &key, int seconds) = 0;
+        virtual bool expire(const std::string &key, long long seconds) = 0;
 
         /**
          * @brief Set a timeout on key in milliseconds.
@@ -69,7 +69,7 @@ namespace redisdal {
          * @param milliseconds The timeout in milliseconds.
          * @return true if the timeout was set, false otherwise.
          */
-        virtual bool pexpire(const std::string &key, int milliseconds) = 0;
+        virtual bool pexpire(const std::string &key, long long milliseconds) = 0;
 
         virtual long long del(const std::string &key) = 0;
 
@@ -137,9 +137,9 @@ namespace redisdal {
         /* SET if Not eXists, Only set the key if it does not already exist */
         virtual bool set_not_exists(const std::string &key, const std::string &value) = 0;
         /* Set the specified expire time, in seconds */
-        virtual bool set_ex(const std::string &key, const std::string &value, int seconds) = 0;
+        virtual bool set_ex(const std::string &key, const std::string &value, long long seconds) = 0;
         /* Set the specified expire time, in milliseconds */
-        virtual bool set_px(const std::string &key, const std::string &value, int milliseconds) = 0;
+        virtual bool set_px(const std::string &key, const std::string &value, long long milliseconds) = 0;
 
         /**
          * @brief Get the value of a key.
